@@ -1,0 +1,25 @@
+{
+  "name": "coreeb-skills-cli",
+  "version": "1.0.0",
+  "description": "CLI unificado para instalar directivas de desarrollo de COREEB (Next.js Fullstack)",
+  "main": "bin/cli.js",
+  "bin": {
+    "coreeb-skills": "./bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "coreeb",
+    "skills",
+    "agent",
+    "claude",
+    "cursor"
+  ],
+  "author": "Sbaussa",
+  "license": "MIT"
+}
