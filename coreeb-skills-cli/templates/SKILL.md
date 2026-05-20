@@ -15,6 +15,16 @@ description: Protocolo Next.js, Prisma, PostgreSQL y coreeb UI bajo Clean Archit
 
 ---
 
+## 📦 INSTALACIÓN & DEPENDENCIAS (Solo para Proyectos desde Cero)
+```bash
+pnpm add coreeb sonner tw-animate-css axios
+pnpm add @prisma/client
+pnpm add -D prisma tsx @types/node
+pnpm dlx prisma init --datasource-provider postgresql
+```
+
+---
+
 ## 📁 ESTRUCTURA DE DIRECTORIOS
 ```
 src
@@ -110,6 +120,15 @@ export default config;
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *)); /* Opcional si se utiliza modo dark */
 @import "coreeb/styles.css";
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-size: 24px;
+  line-height: 1;
+  display: inline-block;
+  -webkit-font-smoothing: antialiased;
+}
 ```
 
 ### D. **`src/app/layout.tsx`**
@@ -122,6 +141,9 @@ export const metadata = { title: 'App' };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
+      <head>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+      </head>
       <body>
         {children}
         <Toaster position="top-right" richColors />

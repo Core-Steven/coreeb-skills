@@ -15,6 +15,16 @@ description: Protocolo Next.js, Prisma, PostgreSQL y coreeb UI bajo Clean Archit
 
 ---
 
+## 📦 INSTALACIÓN & DEPENDENCIAS (Solo para Proyectos desde Cero)
+```bash
+pnpm add coreeb sonner tw-animate-css axios
+pnpm add @prisma/client
+pnpm add -D prisma tsx @types/node
+pnpm dlx prisma init --datasource-provider postgresql
+```
+
+---
+
 ## ESTRUCTURA DE DIRECTORIOS
 ```
 src
@@ -111,6 +121,9 @@ export default config;
 @custom-variant dark (&:is(.dark *)); /* Opcional si se utiliza modo dark */
 @import "coreeb/styles.css";
 ```
+
+
+
 
 ### D. **`src/app/layout.tsx`**
 ```tsx
