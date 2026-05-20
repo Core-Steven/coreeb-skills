@@ -291,7 +291,7 @@ export class NotificationsGateway {
 }
 
 
-// ejemplo de uso //
+// Ejemplo de uso //
 // export class CreateProductUseCase {
 //   constructor(
 //     private repo: ProductRepository,

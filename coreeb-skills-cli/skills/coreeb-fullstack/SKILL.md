@@ -129,7 +129,6 @@ function run(cmd) {
 
 async function main() {
   run('docker compose up -d');
-  // wait-for-db es async, lo ejecutamos y esperamos
   await new Promise((resolve, reject) => {
     const waiter = spawn('node', ['scripts/wait-for-db.js'], { stdio: 'inherit', shell: true });
     waiter.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`wait-for-db salió con código ${code}`))));
@@ -308,20 +307,13 @@ app.prepare().then(() => {
 
 ### `src/shared/infrastructure/socket/socket.types.ts` — Contrato de eventos tipados:
 ```typescript
-// Eventos que el SERVIDOR envía al CLIENTE
 export interface ServerToClientEvents {
   [key: string]: (...args: unknown[]) => void;
-  // Definir eventos concretos por módulo:
-  // 'product:created': (data: ProductDto) => void;
-  // 'order:updated': (data: OrderDto) => void;
   'notification': (payload: { message: string; type: 'info' | 'success' | 'error' }) => void;
 }
 
-// Eventos que el CLIENTE envía al SERVIDOR
 export interface ClientToServerEvents {
   [key: string]: (...args: unknown[]) => void;
-  // 'room:join': (roomId: string) => void;
-  // 'room:leave': (roomId: string) => void;
 }
 ```
 
@@ -332,9 +324,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from './socket.types'
 
 let io: SocketIOServer<ClientToServerEvents, ServerToClientEvents> | null = null;
 
-/**
- * Inicializa el servidor Socket.IO. Llamar UNA sola vez desde server.ts.
- */
+
 export function initSocketServer(
   server: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
 ) {
@@ -349,10 +339,7 @@ export function initSocketServer(
   });
 }
 
-/**
- * Obtiene la instancia global del servidor IO.
- * Usar en Gateways y Route Handlers para emitir eventos.
- */
+
 export function getIO(): SocketIOServer<ClientToServerEvents, ServerToClientEvents> {
   if (!io) {
     throw new Error(
@@ -373,7 +360,7 @@ type TypedIO = SocketIOServer<ClientToServerEvents, ServerToClientEvents>;
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
 /**
- * Gateway de infraestructura para el módulo [Modulo].
+ * Gateway de infraestructura para el módulo.
  * Patrón hexagonal: conecta los Casos de Uso con el canal WebSocket.
  * No contiene lógica de negocio.
  */
@@ -382,7 +369,6 @@ export class [Modulo]Gateway {
   // Evita errores si el Gateway se instancia antes de que initSocketServer() corra.
   private get io(): TypedIO { return getIO(); }
 
-  /** Emitir un evento a TODOS los clientes conectados */
   broadcast<K extends keyof ServerToClientEvents>(
     event: K,
     ...args: Parameters<ServerToClientEvents[K]>
@@ -390,7 +376,6 @@ export class [Modulo]Gateway {
     this.io.emit(event as string, ...args);
   }
 
-  /** Emitir un evento a una sala específica */
   emitToRoom<K extends keyof ServerToClientEvents>(
     room: string,
     event: K,
@@ -399,10 +384,7 @@ export class [Modulo]Gateway {
     this.io.to(room).emit(event as string, ...args);
   }
 
-  /** Registrar handlers de eventos del cliente en una conexión */
   registerHandlers(socket: TypedSocket) {
-    // socket.on('room:join', (roomId) => socket.join(roomId));
-    // socket.on('room:leave', (roomId) => socket.leave(roomId));
   }
 }
 ```
@@ -431,7 +413,7 @@ export class NotificationsGateway {
   }
 }
 
-// ── Uso en un Caso de Uso ────────────────────────────────────────────────────
+// Ejemplo de uso //
 // export class CreateProductUseCase {
 //   constructor(
 //     private repo: ProductRepository,
@@ -506,11 +488,7 @@ export function useSocket({ namespace = '/', autoConnect = true }: UseSocketOpti
     };
   }, [namespace, autoConnect]);
 
-  /**
-   * Suscribirse a un evento del servidor.
-   * ✅ Retorna una función de limpieza — usar siempre dentro de useEffect:
-   * useEffect(() => on('event', handler), [on]);
-   */
+
   const on = useCallback(
     <K extends keyof ServerToClientEvents>(event: K, handler: ServerToClientEvents[K]) => {
       socketRef.current?.on(event as string, handler as (...args: unknown[]) => void);
@@ -528,9 +506,6 @@ export function useSocket({ namespace = '/', autoConnect = true }: UseSocketOpti
     },
     [],
   );
-
-  // ✅ No se expone socket directamente (siempre sería null en el primer render).
-  // Usar on() para suscripciones y emit() para enviar eventos.
   return { isConnected, on, emit };
 }
 ```
