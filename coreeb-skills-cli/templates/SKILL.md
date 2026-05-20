@@ -23,6 +23,7 @@ Este documento es la **ÚNICA FUENTE DE VERDAD**. Cualquier petición del usuari
    - Ejecutar la creación de Next.js: `pnpm dlx create-next-app@latest . --typescript --tailwind --app --src-dir --import-alias "@/*" --use-pnpm`.
    - Instalar Prisma: `pnpm add -D prisma tsx @types/node` y `pnpm add @prisma/client`.
    - Inicializar base de datos local SQLite: `pnpm dlx prisma init --datasource-provider sqlite`.
+   - Ejecutar `pnpm dlx prisma generate` para generar los tipos del cliente.
    - Instalar librería UI y dependencias: `pnpm add coreeb sonner tw-animate-css @tailwindcss/postcss tailwindcss`.
    - Instalar dependencias de tiempo real: `pnpm add socket.io socket.io-client`.
    - Crear directorios de arquitectura hexagonal obligatorios para cada módulo:
@@ -145,6 +146,29 @@ pnpm add socket.io socket.io-client
 pnpm add -D tsx @types/node
 ```
 
+### `scripts/dev.js` — Orquestador cross-platform (Windows + Unix):
+```js
+const { spawn } = require('child_process');
+
+async function main() {
+  const server = spawn('tsx', ['server.ts'], { stdio: 'inherit', shell: true });
+  server.on('close', (code) => process.exit(code ?? 0));
+  process.on('SIGINT', () => server.kill('SIGINT'));
+}
+
+main().catch((err) => {
+  console.error('❌ Error al iniciar el entorno de desarrollo:', err.message);
+  process.exit(1);
+});
+```
+
+### Scripts en `package.json`:
+```json
+"dev": "node scripts/dev.js",
+"build": "next build",
+"start": "NODE_ENV=production tsx server.ts"
+```
+
 ### A. `server.ts` (raíz del proyecto) — Custom HTTP Server:
 ```typescript
 import { createServer } from 'http';
@@ -177,6 +201,9 @@ app.prepare().then(() => {
   httpServer.listen(PORT, () => {
     console.log(`✅ Servidor listo en http://localhost:${PORT}`);
   });
+}).catch((err) => {
+  console.error('❌ Error al iniciar el servidor:', err);
+  process.exit(1);
 });
 ```
 
@@ -205,18 +232,80 @@ export function initSocketServer(
   io = server;
   io.on('connection', (socket) => {
     console.log(`[Socket] Cliente conectado: ${socket.id}`);
+    socket.on('disconnect', (reason) => {
+      console.log(`[Socket] Cliente desconectado: ${socket.id} — ${reason}`);
+    });
   });
 }
 
 export function getIO(): SocketIOServer<ClientToServerEvents, ServerToClientEvents> {
-  if (!io) {
-    throw new Error('[Socket] Socket.IO no está inicializado.');
-  }
+  if (!io) throw new Error('[Socket] Socket.IO no está inicializado.');
   return io;
 }
 ```
 
-### D. `src/shared/infrastructure/socket/useSocket.ts` — Hook del cliente:
+### D. `src/modules/[modulo]/infrastructure/socket/[modulo].gateway.ts` — Gateway Hexagonal:
+```typescript
+import type { Server as SocketIOServer, Socket } from 'socket.io';
+import type { ClientToServerEvents, ServerToClientEvents } from '@/shared/infrastructure/socket/socket.types';
+import { getIO } from '@/shared/infrastructure/socket/socket.server';
+
+type TypedIO = SocketIOServer<ClientToServerEvents, ServerToClientEvents>;
+type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+
+export class [Modulo]Gateway {
+  // ✅ Getter lazy: evita errores si se instancia antes de initSocketServer()
+  private get io(): TypedIO { return getIO(); }
+
+  broadcast<K extends keyof ServerToClientEvents>(event: K, ...args: Parameters<ServerToClientEvents[K]>) {
+    this.io.emit(event as string, ...args);
+  }
+
+  emitToRoom<K extends keyof ServerToClientEvents>(room: string, event: K, ...args: Parameters<ServerToClientEvents[K]>) {
+    this.io.to(room).emit(event as string, ...args);
+  }
+
+  registerHandlers(socket: TypedSocket) {
+    // socket.on('room:join', (roomId) => socket.join(roomId));
+  }
+}
+```
+
+### Ejemplo — `src/modules/notifications/infrastructure/socket/notifications.gateway.ts`:
+```typescript
+import { getIO } from '@/shared/infrastructure/socket/socket.server';
+import type { ServerToClientEvents } from '@/shared/infrastructure/socket/socket.types';
+
+type NotificationType = ServerToClientEvents['notification'] extends (p: infer P) => void ? P['type'] : never;
+
+export class NotificationsGateway {
+  private get io() { return getIO(); }
+
+  notifyAll(message: string, type: NotificationType = 'info') {
+    this.io.emit('notification', { message, type });
+  }
+
+  notifyRoom(room: string, message: string, type: NotificationType = 'info') {
+    this.io.to(room).emit('notification', { message, type });
+  }
+}
+
+
+// ejemplo de uso //
+// export class CreateProductUseCase {
+//   constructor(
+//     private repo: ProductRepository,
+//     private notifier: NotificationsGateway, // ← inyectado
+//   ) {}
+//   async execute(dto: CreateProductDto) {
+//     const product = await this.repo.create(dto);
+//     this.notifier.notifyAll(`Producto "${product.name}" creado`, 'success');
+//     return product;
+//   }
+// }
+```
+
+### E. `src/shared/infrastructure/socket/useSocket.ts` — Hook del cliente:
 ```typescript
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -225,6 +314,11 @@ import type { ClientToServerEvents, ServerToClientEvents } from './socket.types'
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+/**
+ * @example
+ * const { isConnected, on, emit } = useSocket();
+ * useEffect(() => on('notification', (p) => toast(p.message)), [on]);
+ */
 export function useSocket({ namespace = '/', autoConnect = true } = {}) {
   const socketRef = useRef<TypedSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -235,10 +329,27 @@ export function useSocket({ namespace = '/', autoConnect = true } = {}) {
     socketRef.current = socket;
     socket.on('connect', () => setIsConnected(true));
     socket.on('disconnect', () => setIsConnected(false));
+    socket.on('connect_error', (err) => console.error('[Socket] Error:', err.message));
     return () => { socket.disconnect(); socketRef.current = null; };
   }, [namespace, autoConnect]);
 
-  return { socket: socketRef.current, isConnected };
+
+  const on = useCallback(
+    <K extends keyof ServerToClientEvents>(event: K, handler: ServerToClientEvents[K]) => {
+      socketRef.current?.on(event as string, handler as (...args: unknown[]) => void);
+      return () => { socketRef.current?.off(event as string, handler as (...args: unknown[]) => void); };
+    },
+    [],
+  );
+
+  const emit = useCallback(
+    <K extends keyof ClientToServerEvents>(event: K, ...args: Parameters<ClientToServerEvents[K]>) => {
+      socketRef.current?.emit(event as string, ...args);
+    },
+    [],
+  );
+
+  return { isConnected, on, emit };
 }
 ```
 
@@ -246,12 +357,13 @@ export function useSocket({ namespace = '/', autoConnect = true } = {}) {
 - El Gateway es **infraestructura**. No contiene lógica de negocio.
 - Los Casos de Uso reciben el Gateway como **dependencia inyectada** (no lo instancian internamente).
 - El dominio (Entidades, Repositorios, Casos de Uso) **NUNCA importa** `socket.io` directamente.
-- `getIO()` solo se llama dentro de la carpeta `infrastructure/`.
+- Los Gateways usan `private get io() { return getIO(); }` — getter lazy, nunca en el constructor.
 - El hook `useSocket` es solo para Client Components (`'use client'`).
+- `on()` retorna cleanup — siempre consumir dentro de `useEffect`.
 
 ## 4. Checklist de Cumplimiento
 - [ ] ¿Se creó el proyecto unificado de Next.js (App Router)?
-- [ ] ¿Se instaló todo antes de codificar? (Regla Cero): incluye `socket.io`, `socket.io-client`, `tsx`
+- [ ] ¿Se instaló todo antes de codificar? (Regla Cero): incluye `socket.io`, `socket.io-client`, `tsx`, `prisma generate`
 - [ ] ¿Se configuró `next.config.mjs` con `transpilePackages: ['coreeb']`?
 - [ ] ¿Se configuró `postcss.config.mjs` with `@tailwindcss/postcss`?
 - [ ] ¿`src/app/globals.css` tiene la ruta relativa `@source "../../node_modules/coreeb/dist"` y los imports en orden?
@@ -262,9 +374,13 @@ export function useSocket({ namespace = '/', autoConnect = true } = {}) {
 - [ ] ¿Los Route Handlers (`src/app/api/...`) actúan únicamente como controladores delegando a los Casos de Uso?
 - [ ] ¿El backend es 100% agnóstico a la DB (SQLite → PostgreSQL)?
 - [ ] ¿Los estados de carga usan el Spinner de 72px centrado?
-- [ ] ¿`server.ts` en raíz inicia Next.js + Socket.IO en el mismo puerto?
+- [ ] ¿`scripts/dev.js` existe como orquestador cross-platform (compatible Windows)?
+- [ ] Script `dev` es `node scripts/dev.js` (NO usa `&&` directo en package.json)?
+- [ ] ¿`server.ts` en raíz tiene `.catch()` — inicia Next.js + Socket.IO en el mismo puerto?
 - [ ] ¿`socket.types.ts` define contratos tipados de eventos (`ServerToClientEvents`, `ClientToServerEvents`)?
 - [ ] ¿`socket.server.ts` expone `initSocketServer()` y `getIO()` como Singleton?
+- [ ] ¿Los Gateways usan getter lazy `private get io() { return getIO(); }` — no en constructor?
 - [ ] ¿Hay un Gateway hexagonal por módulo en `src/modules/[modulo]/infrastructure/socket/`?
-- [ ] ¿El hook `useSocket` está en `src/shared/infrastructure/socket/useSocket.ts`?
+- [ ] ¿El hook `useSocket` expone `{ isConnected, on, emit }` — NO expone `socket` directamente?
+- [ ] ¿`on()` del hook se usa dentro de `useEffect` (retorna cleanup)?
 - [ ] ¿El dominio NUNCA importa `socket.io` directamente (solo la infraestructura)?

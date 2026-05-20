@@ -23,6 +23,7 @@ pnpm dlx create-next-app@latest . --typescript --tailwind --app --src-dir --impo
 pnpm add -D prisma tsx @types/node
 pnpm add @prisma/client
 pnpm dlx prisma init --datasource-provider postgresql
+pnpm dlx prisma generate
 pnpm add coreeb sonner tw-animate-css @tailwindcss/postcss tailwindcss
 pnpm add socket.io socket.io-client
 ```
@@ -31,7 +32,9 @@ Estructura de módulos hexagonales en `src/modules/[modulo]/`:
 - `domain/entities`, `domain/repositories`
 - `application/dtos`, `application/use-cases`
 - `infrastructure/repositories`
+- `infrastructure/socket` (Gateways WebSocket)
 - `src/shared/infrastructure/prisma/prisma.client.ts`
+- `src/shared/infrastructure/socket/` (socket.server.ts, socket.types.ts, useSocket.ts)
 
 ## 1. Docker & PostgreSQL
 
@@ -91,7 +94,7 @@ async function waitForDb() {
 waitForDb();
 ```
 
-### `.env` (no commitear):
+### `.env` (no commitear — copiar desde `.env.example`):
 ```env
 COMPOSE_PROJECT_NAME=mi_proyecto
 DB_USER=postgres
@@ -99,11 +102,52 @@ DB_PASSWORD=postgres
 DB_NAME=appdb
 DB_PORT=5432
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/appdb?schema=public"
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+PORT=3000
+```
+
+### `.env.example` (sí commitear):
+```env
+COMPOSE_PROJECT_NAME=mi_proyecto
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=appdb
+DB_PORT=5432
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/appdb?schema=public"
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+PORT=3000
+```
+
+### `scripts/dev.js` — Orquestador cross-platform (Windows + Unix):
+```js
+const { execSync, spawn } = require('child_process');
+
+function run(cmd) {
+  console.log(`> ${cmd}`);
+  execSync(cmd, { stdio: 'inherit', shell: true });
+}
+
+async function main() {
+  run('docker compose up -d');
+  // wait-for-db es async, lo ejecutamos y esperamos
+  await new Promise((resolve, reject) => {
+    const waiter = spawn('node', ['scripts/wait-for-db.js'], { stdio: 'inherit', shell: true });
+    waiter.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`wait-for-db salió con código ${code}`))));
+  });
+  const server = spawn('tsx', ['server.ts'], { stdio: 'inherit', shell: true });
+  server.on('close', (code) => process.exit(code ?? 0));
+  process.on('SIGINT', () => server.kill('SIGINT'));
+}
+
+main().catch((err) => {
+  console.error('❌ Error al iniciar el entorno de desarrollo:', err.message);
+  process.exit(1);
+});
 ```
 
 ### Scripts en `package.json`:
 ```json
-"dev": "npm run db:start && node scripts/wait-for-db.js && tsx server.ts",
+"dev": "node scripts/dev.js",
 "build": "next build",
 "start": "NODE_ENV=production tsx server.ts",
 "db:start": "docker compose up -d",
@@ -198,7 +242,7 @@ if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma;
 - Route Handlers solo capturan la petición y delegan al Caso de Uso. Cero lógica de negocio en ellos.
 - Prohibido SQL nativo (`$queryRaw`).
 
-## 5. Tiempo Real con Socket.IO
+## 4. Tiempo Real con Socket.IO
 
 > Next.js App Router **no soporta WebSockets nativamente** en Route Handlers. La solución de producción es un **custom HTTP server** (`server.ts`) que expone Next.js y Socket.IO en el mismo puerto.
 
@@ -256,6 +300,9 @@ app.prepare().then(() => {
   httpServer.listen(PORT, () => {
     console.log(`✅ Servidor listo en http://localhost:${PORT}`);
   });
+}).catch((err) => {
+  console.error('❌ Error al iniciar el servidor:', err);
+  process.exit(1);
 });
 ```
 
@@ -331,11 +378,9 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
  * No contiene lógica de negocio.
  */
 export class [Modulo]Gateway {
-  private io: TypedIO;
-
-  constructor() {
-    this.io = getIO();
-  }
+  // ✅ Getter lazy: getIO() no se llama en construcción, solo al emitir.
+  // Evita errores si el Gateway se instancia antes de que initSocketServer() corra.
+  private get io(): TypedIO { return getIO(); }
 
   /** Emitir un evento a TODOS los clientes conectados */
   broadcast<K extends keyof ServerToClientEvents>(
@@ -371,15 +416,18 @@ import type { ServerToClientEvents } from '@/shared/infrastructure/socket/socket
  * Gateway de notificaciones en tiempo real.
  * Uso: inyectar en Casos de Uso para emitir tras operaciones CRUD.
  */
-export class NotificationsGateway {
-  private io = getIO();
+type NotificationType = ServerToClientEvents['notification'] extends (p: infer P) => void ? P['type'] : never;
 
-  notifyAll(message: string, type: ServerToClientEvents['notification'] extends (p: infer P) => void ? P['type'] : never = 'info') {
+export class NotificationsGateway {
+  // ✅ Getter lazy: seguro si se instancia antes de que el servidor Socket.IO esté listo
+  private get io() { return getIO(); }
+
+  notifyAll(message: string, type: NotificationType = 'info') {
     this.io.emit('notification', { message, type });
   }
 
-  notifyRoom(room: string, message: string) {
-    this.io.to(room).emit('notification', { message, type: 'info' });
+  notifyRoom(room: string, message: string, type: NotificationType = 'info') {
+    this.io.to(room).emit('notification', { message, type });
   }
 }
 
@@ -417,12 +465,12 @@ interface UseSocketOptions {
  * Gestiona el ciclo de vida de la conexión automáticamente.
  *
  * @example
- * const { socket, isConnected } = useSocket();
+ * const { isConnected, on, emit } = useSocket();
+ *
  * useEffect(() => {
- *   if (!socket) return;
- *   socket.on('notification', (payload) => toast(payload.message));
- *   return () => { socket.off('notification'); };
- * }, [socket]);
+ *   // on() retorna el cleanup — úsalo directamente en useEffect
+ *   return on('notification', (payload) => toast(payload.message));
+ * }, [on]);
  */
 export function useSocket({ namespace = '/', autoConnect = true }: UseSocketOptions = {}) {
   const socketRef = useRef<TypedSocket | null>(null);
@@ -458,6 +506,22 @@ export function useSocket({ namespace = '/', autoConnect = true }: UseSocketOpti
     };
   }, [namespace, autoConnect]);
 
+  /**
+   * Suscribirse a un evento del servidor.
+   * ✅ Retorna una función de limpieza — usar siempre dentro de useEffect:
+   * useEffect(() => on('event', handler), [on]);
+   */
+  const on = useCallback(
+    <K extends keyof ServerToClientEvents>(event: K, handler: ServerToClientEvents[K]) => {
+      socketRef.current?.on(event as string, handler as (...args: unknown[]) => void);
+      return () => {
+        socketRef.current?.off(event as string, handler as (...args: unknown[]) => void);
+      };
+    },
+    [],
+  );
+
+  /** Emitir un evento al servidor */
   const emit = useCallback(
     <K extends keyof ClientToServerEvents>(event: K, ...args: Parameters<ClientToServerEvents[K]>) => {
       socketRef.current?.emit(event as string, ...args);
@@ -465,7 +529,9 @@ export function useSocket({ namespace = '/', autoConnect = true }: UseSocketOpti
     [],
   );
 
-  return { socket: socketRef.current, isConnected, emit };
+  // ✅ No se expone socket directamente (siempre sería null en el primer render).
+  // Usar on() para suscripciones y emit() para enviar eventos.
+  return { isConnected, on, emit };
 }
 ```
 
@@ -479,22 +545,28 @@ PORT=3000
 - El Gateway es **infraestructura**. No contiene lógica de negocio.
 - Los Casos de Uso reciben el Gateway como **dependencia inyectada** (no lo instancian internamente).
 - El dominio (Entidades, Repositorios, Casos de Uso) **NUNCA importa** `socket.io` directamente.
-- `getIO()` solo se llama dentro de la carpeta `infrastructure/`.
+- Los Gateways usan `private get io() { return getIO(); }` — getter lazy, nunca en el constructor.
 - El hook `useSocket` es solo para Client Components (`'use client'`).
+- `on()` retorna cleanup — siempre consumir dentro de `useEffect`.
 
-## 4. Checklist
+## 5. Checklist
 - [ ] `docker-compose.yml` con healthcheck creado
 - [ ] `scripts/wait-for-db.js` creado
-- [ ] Script `dev` ejecuta: `db:start → wait-for-db.js → tsx server.ts`
-- [ ] `.env` configurado con `DATABASE_URL` y `NEXT_PUBLIC_APP_URL`
-- [ ] Instalación completa antes de codificar (Regla Cero): incluye `socket.io`, `socket.io-client`, `tsx`
+- [ ] `scripts/dev.js` creado — orquestador cross-platform (compatible Windows PowerShell)
+- [ ] Script `dev` es `node scripts/dev.js` (NO usa `&&` directo en package.json)
+- [ ] `.env` configurado con `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `PORT`
+- [ ] `.env.example` commiteado como referencia
+- [ ] Instalación incluye `prisma generate` después de `prisma init`
+- [ ] Instalación incluye `socket.io`, `socket.io-client`, `tsx`
 - [ ] `next.config.mjs`, `postcss.config.mjs`, `globals.css`, `layout.tsx` configurados
 - [ ] UI 100% `coreeb`, iconos Material Symbols, Spinner en loadings
 - [ ] Prisma Singleton en `src/shared/infrastructure/prisma/prisma.client.ts`
 - [ ] Route Handlers delegan a Casos de Uso. Sin lógica de negocio en ellos.
-- [ ] `server.ts` en raíz — custom server HTTP que une Next.js + Socket.IO
+- [ ] `server.ts` con `.catch()` — custom server HTTP que une Next.js + Socket.IO
 - [ ] `socket.types.ts` define contratos de eventos (`ServerToClientEvents`, `ClientToServerEvents`)
 - [ ] `socket.server.ts` expone `initSocketServer()` y `getIO()` como Singleton
+- [ ] Gateways usan getter lazy `private get io() { return getIO(); }` — no en constructor
 - [ ] Gateway hexagonal en `src/modules/[modulo]/infrastructure/socket/[modulo].gateway.ts`
-- [ ] Hook `useSocket` en `src/shared/infrastructure/socket/useSocket.ts`
+- [ ] Hook `useSocket` expone `{ isConnected, on, emit }` — NO expone `socket` directamente
+- [ ] `on()` del hook se usa dentro de `useEffect` (retorna cleanup)
 - [ ] El dominio NUNCA importa `socket.io` directamente (solo la infraestructura)
