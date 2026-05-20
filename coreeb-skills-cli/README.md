@@ -2,7 +2,7 @@
 
 Directiva de desarrollo **COREEB Fullstack** para agentes de IA (Claude Code, Cursor, Cline, etc.).
 
-Stack: **Next.js + Prisma + PostgreSQL (Docker) + Socket.IO** con Arquitectura Hexagonal estricta.
+Stack: **Next.js + Prisma + PostgreSQL (Docker)** con Arquitectura Clean (Clean Architecture) estricta.
 
 ## Instalación
 
