@@ -20,10 +20,11 @@ Este documento es la **ÚNICA FUENTE DE VERDAD**. Cualquier petición del usuari
 
 ```bash
 pnpm dlx create-next-app@latest . --typescript --tailwind --app --src-dir --import-alias "@/*" --use-pnpm
-pnpm add -D prisma
+pnpm add -D prisma tsx @types/node
 pnpm add @prisma/client
 pnpm dlx prisma init --datasource-provider postgresql
 pnpm add coreeb sonner tw-animate-css @tailwindcss/postcss tailwindcss
+pnpm add socket.io socket.io-client
 ```
 
 Estructura de módulos hexagonales en `src/modules/[modulo]/`:
@@ -102,7 +103,9 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/appdb?schema=public"
 
 ### Scripts en `package.json`:
 ```json
-"dev": "npm run db:start && node scripts/wait-for-db.js && next dev",
+"dev": "npm run db:start && node scripts/wait-for-db.js && tsx server.ts",
+"build": "next build",
+"start": "NODE_ENV=production tsx server.ts",
 "db:start": "docker compose up -d",
 "db:stop": "docker compose down",
 "db:reset": "docker compose down -v && docker compose up -d",
@@ -195,13 +198,303 @@ if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma;
 - Route Handlers solo capturan la petición y delegan al Caso de Uso. Cero lógica de negocio en ellos.
 - Prohibido SQL nativo (`$queryRaw`).
 
+## 5. Tiempo Real con Socket.IO
+
+> Next.js App Router **no soporta WebSockets nativamente** en Route Handlers. La solución de producción es un **custom HTTP server** (`server.ts`) que expone Next.js y Socket.IO en el mismo puerto.
+
+### Dependencias adicionales:
+```bash
+pnpm add socket.io socket.io-client
+pnpm add -D tsx @types/node
+```
+
+### Arquitectura:
+```
+Puerto 3000
+├── HTTP  → Next.js (páginas + API routes)
+└── WS    → Socket.IO (path: /api/socket)
+
+Capa de infraestructura (hexagonal):
+Domain/Use Cases (puros, sin IO)
+       ↓
+Gateway (infraestructura)   ← análogo al Route Handler
+       ↓
+Socket.IO Server Singleton
+       ↓
+Cliente (browser hook)
+```
+
+### `server.ts` (raíz del proyecto):
+```typescript
+import { createServer } from 'http';
+import { parse } from 'url';
+import next from 'next';
+import { Server as SocketIOServer } from 'socket.io';
+import { initSocketServer } from './src/shared/infrastructure/socket/socket.server';
+
+const dev = process.env.NODE_ENV !== 'production';
+const app = next({ dev });
+const handle = app.getRequestHandler();
+
+app.prepare().then(() => {
+  const httpServer = createServer((req, res) => {
+    const parsedUrl = parse(req.url!, true);
+    handle(req, res, parsedUrl);
+  });
+
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      methods: ['GET', 'POST'],
+    },
+    path: '/api/socket',
+  });
+
+  initSocketServer(io);
+
+  const PORT = parseInt(process.env.PORT || '3000', 10);
+  httpServer.listen(PORT, () => {
+    console.log(`✅ Servidor listo en http://localhost:${PORT}`);
+  });
+});
+```
+
+### `src/shared/infrastructure/socket/socket.types.ts` — Contrato de eventos tipados:
+```typescript
+// Eventos que el SERVIDOR envía al CLIENTE
+export interface ServerToClientEvents {
+  [key: string]: (...args: unknown[]) => void;
+  // Definir eventos concretos por módulo:
+  // 'product:created': (data: ProductDto) => void;
+  // 'order:updated': (data: OrderDto) => void;
+  'notification': (payload: { message: string; type: 'info' | 'success' | 'error' }) => void;
+}
+
+// Eventos que el CLIENTE envía al SERVIDOR
+export interface ClientToServerEvents {
+  [key: string]: (...args: unknown[]) => void;
+  // 'room:join': (roomId: string) => void;
+  // 'room:leave': (roomId: string) => void;
+}
+```
+
+### `src/shared/infrastructure/socket/socket.server.ts` — Singleton del servidor IO:
+```typescript
+import type { Server as SocketIOServer } from 'socket.io';
+import type { ClientToServerEvents, ServerToClientEvents } from './socket.types';
+
+let io: SocketIOServer<ClientToServerEvents, ServerToClientEvents> | null = null;
+
+/**
+ * Inicializa el servidor Socket.IO. Llamar UNA sola vez desde server.ts.
+ */
+export function initSocketServer(
+  server: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
+) {
+  io = server;
+
+  io.on('connection', (socket) => {
+    console.log(`[Socket] Cliente conectado: ${socket.id}`);
+
+    socket.on('disconnect', (reason) => {
+      console.log(`[Socket] Cliente desconectado: ${socket.id} — ${reason}`);
+    });
+  });
+}
+
+/**
+ * Obtiene la instancia global del servidor IO.
+ * Usar en Gateways y Route Handlers para emitir eventos.
+ */
+export function getIO(): SocketIOServer<ClientToServerEvents, ServerToClientEvents> {
+  if (!io) {
+    throw new Error(
+      '[Socket] Socket.IO no está inicializado. Asegúrate de llamar initSocketServer en server.ts.',
+    );
+  }
+  return io;
+}
+```
+
+### `src/modules/[modulo]/infrastructure/socket/[modulo].gateway.ts` — Patrón Gateway Hexagonal:
+```typescript
+import type { Server as SocketIOServer, Socket } from 'socket.io';
+import type { ClientToServerEvents, ServerToClientEvents } from '@/shared/infrastructure/socket/socket.types';
+import { getIO } from '@/shared/infrastructure/socket/socket.server';
+
+type TypedIO = SocketIOServer<ClientToServerEvents, ServerToClientEvents>;
+type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+
+/**
+ * Gateway de infraestructura para el módulo [Modulo].
+ * Patrón hexagonal: conecta los Casos de Uso con el canal WebSocket.
+ * No contiene lógica de negocio.
+ */
+export class [Modulo]Gateway {
+  private io: TypedIO;
+
+  constructor() {
+    this.io = getIO();
+  }
+
+  /** Emitir un evento a TODOS los clientes conectados */
+  broadcast<K extends keyof ServerToClientEvents>(
+    event: K,
+    ...args: Parameters<ServerToClientEvents[K]>
+  ) {
+    this.io.emit(event as string, ...args);
+  }
+
+  /** Emitir un evento a una sala específica */
+  emitToRoom<K extends keyof ServerToClientEvents>(
+    room: string,
+    event: K,
+    ...args: Parameters<ServerToClientEvents[K]>
+  ) {
+    this.io.to(room).emit(event as string, ...args);
+  }
+
+  /** Registrar handlers de eventos del cliente en una conexión */
+  registerHandlers(socket: TypedSocket) {
+    // socket.on('room:join', (roomId) => socket.join(roomId));
+    // socket.on('room:leave', (roomId) => socket.leave(roomId));
+  }
+}
+```
+
+### Ejemplo concreto — `src/modules/notifications/infrastructure/socket/notifications.gateway.ts`:
+```typescript
+import { getIO } from '@/shared/infrastructure/socket/socket.server';
+import type { ServerToClientEvents } from '@/shared/infrastructure/socket/socket.types';
+
+/**
+ * Gateway de notificaciones en tiempo real.
+ * Uso: inyectar en Casos de Uso para emitir tras operaciones CRUD.
+ */
+export class NotificationsGateway {
+  private io = getIO();
+
+  notifyAll(message: string, type: ServerToClientEvents['notification'] extends (p: infer P) => void ? P['type'] : never = 'info') {
+    this.io.emit('notification', { message, type });
+  }
+
+  notifyRoom(room: string, message: string) {
+    this.io.to(room).emit('notification', { message, type: 'info' });
+  }
+}
+
+// ── Uso en un Caso de Uso ────────────────────────────────────────────────────
+// export class CreateProductUseCase {
+//   constructor(
+//     private repo: ProductRepository,
+//     private notifier: NotificationsGateway,   // ← inyectado
+//   ) {}
+//
+//   async execute(dto: CreateProductDto) {
+//     const product = await this.repo.create(dto);
+//     this.notifier.notifyAll(`Producto "${product.name}" creado`, 'success');
+//     return product;
+//   }
+// }
+```
+
+### `src/shared/infrastructure/socket/useSocket.ts` — Hook del cliente:
+```typescript
+'use client';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { io, Socket } from 'socket.io-client';
+import type { ClientToServerEvents, ServerToClientEvents } from './socket.types';
+
+type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+interface UseSocketOptions {
+  namespace?: string;
+  autoConnect?: boolean;
+}
+
+/**
+ * Hook para conectarse al servidor Socket.IO.
+ * Gestiona el ciclo de vida de la conexión automáticamente.
+ *
+ * @example
+ * const { socket, isConnected } = useSocket();
+ * useEffect(() => {
+ *   if (!socket) return;
+ *   socket.on('notification', (payload) => toast(payload.message));
+ *   return () => { socket.off('notification'); };
+ * }, [socket]);
+ */
+export function useSocket({ namespace = '/', autoConnect = true }: UseSocketOptions = {}) {
+  const socketRef = useRef<TypedSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    if (!autoConnect) return;
+
+    const socket: TypedSocket = io(namespace, {
+      path: '/api/socket',
+      withCredentials: true,
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('[Socket] Conectado:', socket.id);
+      setIsConnected(true);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('[Socket] Desconectado:', reason);
+      setIsConnected(false);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('[Socket] Error de conexión:', err.message);
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [namespace, autoConnect]);
+
+  const emit = useCallback(
+    <K extends keyof ClientToServerEvents>(event: K, ...args: Parameters<ClientToServerEvents[K]>) => {
+      socketRef.current?.emit(event as string, ...args);
+    },
+    [],
+  );
+
+  return { socket: socketRef.current, isConnected, emit };
+}
+```
+
+### Variables de entorno adicionales en `.env`:
+```env
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+PORT=3000
+```
+
+### Reglas del Gateway:
+- El Gateway es **infraestructura**. No contiene lógica de negocio.
+- Los Casos de Uso reciben el Gateway como **dependencia inyectada** (no lo instancian internamente).
+- El dominio (Entidades, Repositorios, Casos de Uso) **NUNCA importa** `socket.io` directamente.
+- `getIO()` solo se llama dentro de la carpeta `infrastructure/`.
+- El hook `useSocket` es solo para Client Components (`'use client'`).
+
 ## 4. Checklist
 - [ ] `docker-compose.yml` con healthcheck creado
 - [ ] `scripts/wait-for-db.js` creado
-- [ ] Script `dev` ejecuta: `db:start → wait-for-db.js → next dev`
-- [ ] `.env` configurado con `DATABASE_URL` local
-- [ ] Instalación completa antes de codificar (Regla Cero)
+- [ ] Script `dev` ejecuta: `db:start → wait-for-db.js → tsx server.ts`
+- [ ] `.env` configurado con `DATABASE_URL` y `NEXT_PUBLIC_APP_URL`
+- [ ] Instalación completa antes de codificar (Regla Cero): incluye `socket.io`, `socket.io-client`, `tsx`
 - [ ] `next.config.mjs`, `postcss.config.mjs`, `globals.css`, `layout.tsx` configurados
 - [ ] UI 100% `coreeb`, iconos Material Symbols, Spinner en loadings
 - [ ] Prisma Singleton en `src/shared/infrastructure/prisma/prisma.client.ts`
 - [ ] Route Handlers delegan a Casos de Uso. Sin lógica de negocio en ellos.
+- [ ] `server.ts` en raíz — custom server HTTP que une Next.js + Socket.IO
+- [ ] `socket.types.ts` define contratos de eventos (`ServerToClientEvents`, `ClientToServerEvents`)
+- [ ] `socket.server.ts` expone `initSocketServer()` y `getIO()` como Singleton
+- [ ] Gateway hexagonal en `src/modules/[modulo]/infrastructure/socket/[modulo].gateway.ts`
+- [ ] Hook `useSocket` en `src/shared/infrastructure/socket/useSocket.ts`
+- [ ] El dominio NUNCA importa `socket.io` directamente (solo la infraestructura)

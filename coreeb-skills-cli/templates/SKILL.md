@@ -21,16 +21,19 @@ Este documento es la **ÚNICA FUENTE DE VERDAD**. Cualquier petición del usuari
 
 2. **Scaffolding del Proyecto Next.js Fullstack (desde Cero):**
    - Ejecutar la creación de Next.js: `pnpm dlx create-next-app@latest . --typescript --tailwind --app --src-dir --import-alias "@/*" --use-pnpm`.
-   - Instalar Prisma: `pnpm add -D prisma` y `pnpm add @prisma/client`.
+   - Instalar Prisma: `pnpm add -D prisma tsx @types/node` y `pnpm add @prisma/client`.
    - Inicializar base de datos local SQLite: `pnpm dlx prisma init --datasource-provider sqlite`.
    - Instalar librería UI y dependencias: `pnpm add coreeb sonner tw-animate-css @tailwindcss/postcss tailwindcss`.
+   - Instalar dependencias de tiempo real: `pnpm add socket.io socket.io-client`.
    - Crear directorios de arquitectura hexagonal obligatorios para cada módulo:
      - `src/modules/[nombre-modulo]/domain/entities`
      - `src/modules/[nombre-modulo]/domain/repositories`
      - `src/modules/[nombre-modulo]/application/dtos`
      - `src/modules/[nombre-modulo]/application/use-cases`
      - `src/modules/[nombre-modulo]/infrastructure/repositories` (Implementaciones Prisma)
+     - `src/modules/[nombre-modulo]/infrastructure/socket` (Gateways WebSocket por módulo)
      - `src/shared/infrastructure/prisma/prisma.client.ts` (Prisma Client Singleton)
+     - `src/shared/infrastructure/socket/` (socket.server.ts, socket.types.ts, useSocket.ts)
 
 ## 1. Frontend & Configuración de Librería `coreeb` (NPM)
 Para usar correctamente la librería de componentes `coreeb` (https://www.npmjs.com/package/coreeb), es **OBLIGATORIO** configurar los siguientes archivos de forma exacta en el orden indicado:
@@ -56,7 +59,6 @@ El orden de los imports es **INNEGOCIABLE**. Si falta el directive `@source` apu
 
 @custom-variant dark (&:is(.dark *));
 
-/* IMPORTANTE: Ruta relativa correcta desde src/app/ a node_modules */
 @source "../../node_modules/coreeb/dist";
 
 @import "coreeb/styles.css";
@@ -133,9 +135,123 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 - **Persistencia Agnóstica:** El código debe ser **100% agnóstico**. Debe permitir la migración de SQLite (dev) a PostgreSQL (prod) sin cambios en el código, solo modificando el `DATABASE_URL`. Prohibido SQL nativo (`$queryRaw`).
 - **Desacoplamiento:** La lógica de negocio reside exclusivamente en los Casos de Uso. Los Route Handlers no contienen lógica de negocio.
 
-## 3. Checklist de Cumplimiento
+## 3. Tiempo Real con Socket.IO
+
+> Next.js App Router **no soporta WebSockets nativamente** en Route Handlers. La solución de producción es un **custom HTTP server** (`server.ts`) que expone Next.js y Socket.IO en el mismo puerto.
+
+### Dependencias:
+```bash
+pnpm add socket.io socket.io-client
+pnpm add -D tsx @types/node
+```
+
+### A. `server.ts` (raíz del proyecto) — Custom HTTP Server:
+```typescript
+import { createServer } from 'http';
+import { parse } from 'url';
+import next from 'next';
+import { Server as SocketIOServer } from 'socket.io';
+import { initSocketServer } from './src/shared/infrastructure/socket/socket.server';
+
+const dev = process.env.NODE_ENV !== 'production';
+const app = next({ dev });
+const handle = app.getRequestHandler();
+
+app.prepare().then(() => {
+  const httpServer = createServer((req, res) => {
+    const parsedUrl = parse(req.url!, true);
+    handle(req, res, parsedUrl);
+  });
+
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      methods: ['GET', 'POST'],
+    },
+    path: '/api/socket',
+  });
+
+  initSocketServer(io);
+
+  const PORT = parseInt(process.env.PORT || '3000', 10);
+  httpServer.listen(PORT, () => {
+    console.log(`✅ Servidor listo en http://localhost:${PORT}`);
+  });
+});
+```
+
+### B. `src/shared/infrastructure/socket/socket.types.ts` — Contrato de eventos tipados:
+```typescript
+export interface ServerToClientEvents {
+  [key: string]: (...args: unknown[]) => void;
+  'notification': (payload: { message: string; type: 'info' | 'success' | 'error' }) => void;
+}
+
+export interface ClientToServerEvents {
+  [key: string]: (...args: unknown[]) => void;
+}
+```
+
+### C. `src/shared/infrastructure/socket/socket.server.ts` — Singleton del servidor IO:
+```typescript
+import type { Server as SocketIOServer } from 'socket.io';
+import type { ClientToServerEvents, ServerToClientEvents } from './socket.types';
+
+let io: SocketIOServer<ClientToServerEvents, ServerToClientEvents> | null = null;
+
+export function initSocketServer(
+  server: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
+) {
+  io = server;
+  io.on('connection', (socket) => {
+    console.log(`[Socket] Cliente conectado: ${socket.id}`);
+  });
+}
+
+export function getIO(): SocketIOServer<ClientToServerEvents, ServerToClientEvents> {
+  if (!io) {
+    throw new Error('[Socket] Socket.IO no está inicializado.');
+  }
+  return io;
+}
+```
+
+### D. `src/shared/infrastructure/socket/useSocket.ts` — Hook del cliente:
+```typescript
+'use client';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { io, Socket } from 'socket.io-client';
+import type { ClientToServerEvents, ServerToClientEvents } from './socket.types';
+
+type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+export function useSocket({ namespace = '/', autoConnect = true } = {}) {
+  const socketRef = useRef<TypedSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    if (!autoConnect) return;
+    const socket: TypedSocket = io(namespace, { path: '/api/socket', withCredentials: true });
+    socketRef.current = socket;
+    socket.on('connect', () => setIsConnected(true));
+    socket.on('disconnect', () => setIsConnected(false));
+    return () => { socket.disconnect(); socketRef.current = null; };
+  }, [namespace, autoConnect]);
+
+  return { socket: socketRef.current, isConnected };
+}
+```
+
+### Reglas del Gateway:
+- El Gateway es **infraestructura**. No contiene lógica de negocio.
+- Los Casos de Uso reciben el Gateway como **dependencia inyectada** (no lo instancian internamente).
+- El dominio (Entidades, Repositorios, Casos de Uso) **NUNCA importa** `socket.io` directamente.
+- `getIO()` solo se llama dentro de la carpeta `infrastructure/`.
+- El hook `useSocket` es solo para Client Components (`'use client'`).
+
+## 4. Checklist de Cumplimiento
 - [ ] ¿Se creó el proyecto unificado de Next.js (App Router)?
-- [ ] ¿Se instaló todo antes de codificar? (Regla Cero)
+- [ ] ¿Se instaló todo antes de codificar? (Regla Cero): incluye `socket.io`, `socket.io-client`, `tsx`
 - [ ] ¿Se configuró `next.config.mjs` con `transpilePackages: ['coreeb']`?
 - [ ] ¿Se configuró `postcss.config.mjs` with `@tailwindcss/postcss`?
 - [ ] ¿`src/app/globals.css` tiene la ruta relativa `@source "../../node_modules/coreeb/dist"` y los imports en orden?
@@ -144,5 +260,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 - [ ] ¿Los iconos son Material Symbols Outlined?
 - [ ] ¿Se implementó el Prisma Client Singleton global en `src/shared/infrastructure/prisma/prisma.client.ts`?
 - [ ] ¿Los Route Handlers (`src/app/api/...`) actúan únicamente como controladores delegando a los Casos de Uso?
-- [ ] ¿El backend es 100% agnóstico a la DB (SQLite -> PostgreSQL)?
+- [ ] ¿El backend es 100% agnóstico a la DB (SQLite → PostgreSQL)?
 - [ ] ¿Los estados de carga usan el Spinner de 72px centrado?
+- [ ] ¿`server.ts` en raíz inicia Next.js + Socket.IO en el mismo puerto?
+- [ ] ¿`socket.types.ts` define contratos tipados de eventos (`ServerToClientEvents`, `ClientToServerEvents`)?
+- [ ] ¿`socket.server.ts` expone `initSocketServer()` y `getIO()` como Singleton?
+- [ ] ¿Hay un Gateway hexagonal por módulo en `src/modules/[modulo]/infrastructure/socket/`?
+- [ ] ¿El hook `useSocket` está en `src/shared/infrastructure/socket/useSocket.ts`?
+- [ ] ¿El dominio NUNCA importa `socket.io` directamente (solo la infraestructura)?
