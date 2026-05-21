@@ -20,15 +20,19 @@ const print = {
 
 const helpText = `
 ${colors.bold}${colors.cyan}COREEB Skills Installer CLI${colors.reset}
-Instalador de la directiva de desarrollo COREEB Fullstack (Next.js + Prisma) para Agentes de IA.
+Instalador de las directivas de desarrollo COREEB para Agentes de IA.
 
 ${colors.bold}Uso:${colors.reset}
   npx coreeb-skills-cli [comando] [opciones]
 
 ${colors.bold}Comandos:${colors.reset}
-  add                 Instala la skill de desarrollo COREEB Fullstack. (Por defecto si no se indica otro).
+  add                 Instala la skill de desarrollo COREEB (Fullstack por defecto).
 
-${colors.bold}Opciones:${colors.reset}
+${colors.bold}Opciones de Skill:${colors.reset}
+  --fullstack, -fs    Instala la skill de desarrollo COREEB Fullstack (Next.js + Prisma) (Por defecto).
+  --frontend, -fe     Instala la skill de desarrollo COREEB Frontend (Tailwind v4 + Componentes UI).
+
+${colors.bold}Opciones de Ubicación:${colors.reset}
   --global, -g        Instala la skill de forma global en la carpeta del sistema (~/.agents/skills/).
   --project, -p       Instala la skill localmente en el proyecto actual (./.agents/skills/) (Por defecto).
   --dest <ruta>, -d   Instala la skill directamente en una ruta de archivo específica (ej: ./SKILL.md).
@@ -36,6 +40,7 @@ ${colors.bold}Opciones:${colors.reset}
 
 ${colors.bold}Ejemplos:${colors.reset}
   npx coreeb-skills-cli add --project
+  npx coreeb-skills-cli add --frontend --project
   npx coreeb-skills-cli add --global
   npx coreeb-skills-cli add --dest ./SKILL.md
 `;
@@ -67,6 +72,11 @@ function run() {
   // Parsear opciones
   const isGlobal = args.includes('--global') || args.includes('-g');
   const isProject = args.includes('--project') || args.includes('-p') || (!isGlobal && !args.includes('--dest') && !args.includes('-d'));
+  const isFrontend = args.includes('--frontend') || args.includes('-fe');
+
+  const skillName = isFrontend ? 'coreeb-frontend' : 'coreeb-fullstack';
+  const templateName = isFrontend ? 'SKILL_FRONTEND.md' : 'SKILL.md';
+  const skillLabel = isFrontend ? 'COREEB Frontend' : 'COREEB Fullstack';
 
   let customDest = null;
   const destIndex = args.indexOf('--dest') !== -1 ? args.indexOf('--dest') : args.indexOf('-d');
@@ -74,10 +84,10 @@ function run() {
     customDest = args[destIndex + 1];
   }
 
-  const sourcePath = path.join(__dirname, '../templates/SKILL.md');
+  const sourcePath = path.join(__dirname, '../templates', templateName);
 
   if (!fs.existsSync(sourcePath)) {
-    print.error('No se encontró la plantilla de la skill en el paquete de instalación.');
+    print.error(`No se encontró la plantilla de la skill ${skillName} en el paquete de instalación.`);
     process.exit(1);
   }
 
@@ -86,9 +96,9 @@ function run() {
   if (customDest) {
     targetPath = path.resolve(customDest);
   } else if (isGlobal) {
-    targetPath = path.join(getHomeDir(), '.agents', 'skills', 'coreeb-fullstack', 'SKILL.md');
+    targetPath = path.join(getHomeDir(), '.agents', 'skills', skillName, 'SKILL.md');
   } else {
-    targetPath = path.join(process.cwd(), '.agents', 'skills', 'coreeb-fullstack', 'SKILL.md');
+    targetPath = path.join(process.cwd(), '.agents', 'skills', skillName, 'SKILL.md');
   }
 
   const targetDir = path.dirname(targetPath);
@@ -100,7 +110,7 @@ function run() {
 
     fs.copyFileSync(sourcePath, targetPath);
 
-    print.success(`¡Skill COREEB Fullstack instalada con éxito!`);
+    print.success(`¡Skill ${skillLabel} instalada con éxito!`);
     console.log(`${colors.bold}Ubicación:${colors.reset} ${targetPath}`);
     console.log(`${colors.cyan}El agente de IA cargará esta directiva como fuente de verdad en sus tareas.${colors.reset}\n`);
   } catch (err) {

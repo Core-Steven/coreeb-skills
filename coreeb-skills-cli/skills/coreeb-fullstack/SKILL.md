@@ -12,6 +12,13 @@ description: Protocolo Next.js, Prisma, PostgreSQL y coreeb UI bajo Clean Archit
 - **Entorno local:** PostgreSQL en Docker + Next.js local (`next dev`).
 - **UI:** Librería `coreeb` exclusivamente.
 - **Paquetes:** pnpm.
+- **Verificación de Dependencias Previa:** Antes de comenzar a escribir cualquier archivo de código, el agente **DEBE** revisar el archivo `package.json` de la raíz. Si no están presentes las dependencias obligatorias (`coreeb`, `sonner`, `tw-animate-css`, `axios`, `@prisma/client`, `prisma`, `tsx`, `@types/node`), el agente **debe proceder a instalarlas automáticamente** mediante `pnpm` antes de realizar otra tarea.
+- **Estilo de Páginas Obligatorio:** Cada página, vista, formulario y sub-componente frontend generado **DEBE** seguir y heredar rigurosamente el sistema de diseño, la maquetación, los iconos y la estética unificada de la librería `coreeb` de forma obligatoria.
+
+> [!IMPORTANT]
+> **GUÍA DE ESTILOS GLOBALES (`coreeb` UI Base):**
+> Para proyectos desde cero, el agente **debe generar una base de CSS limpia y bien documentada en `globals.css`** (por ejemplo, implementando clases de scrollbar personalizadas como `.custom-scrollbar` para las tablas, resets de diseño compatibles o utilidades específicas) para que sirva de guía y ejemplo a los desarrolladores.
+> Sin embargo, **toda esta base y cualquier estilo creado debe estar en estricta sincronía con la librería `coreeb`**, heredando y respetando siempre sus tokens, variables, inputs y estructura para que actúe como una extensión natural del sistema de diseño oficial, y nunca como estilos conflictivos.
 
 ---
 
@@ -150,6 +157,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   );
 }
 ```
+
+### E. **CATÁLOGO DE COMPONENTES `coreeb` (Obligatorio)**
+Para que el proyecto tenga una apariencia uniforme y agradable desde el inicio, todo el diseño y maquetación de vistas y formularios debe utilizar los componentes nativos de `coreeb`:
+
+* **General / Layout:** `Icons`, `Button`, `Badge`, `Separator`, `Skeleton`, `Spinner`, `Visually Hidden`, `Card`, `Collapsible`, `Scroll Area`, `Tabs`.
+* **Formularios:** `Floating Input`, `Floating Select`, `Floating Date Picker`, `Chip Selector`, `Checkbox`, `Form`, `Radio Group`, `Switch`, `Textarea`, `File Dropzone`, `Date Range Pill`.
+* **Data Display & Feedback:** `Avatar`, `Table`, `Sonner (Toast)` (Toaster), `Tooltip`.
+* **Overlay:** `Command`, `Dialog`, `Dropdown Menu`, `Popover`, `Sheet`.
+
+*Nota: La interfaz debe crearse inicialmente al 100% usando estos componentes. La navegación general y la distribución de paneles de cada vista debe estar perfectamente coordinada con el estilo de pestañas de la aplicación, utilizando los componentes `Tabs` y `Sheet` de la librería de forma estricta. Cambios o personalizaciones se aplican después a petición del desarrollador.*
 
 ---
 
