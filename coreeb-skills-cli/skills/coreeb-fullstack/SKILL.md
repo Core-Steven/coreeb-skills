@@ -115,11 +115,15 @@ export default config;
 ```
 
 ### C. **`src/app/globals.css`**
+Esta es la importación base y obligatoria para todos los desarrollos de COREEB.
+
 ```css
 @import "tailwindcss";
 @import "tw-animate-css";
-@custom-variant dark (&:is(.dark *)); /* Opcional si se utiliza modo dark */
+@custom-variant dark (&:is(.dark *));
 @import "coreeb/styles.css";
+
+/* Cualquier estilo específico del proyecto va aquí debajo */
 ```
 
 
@@ -135,6 +139,9 @@ export const metadata = { title: 'App' };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
+      <head>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+      </head>
       <body>
         {children}
         <Toaster position="top-right" richColors />

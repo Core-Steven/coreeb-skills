@@ -115,20 +115,15 @@ export default config;
 ```
 
 ### C. **`src/app/globals.css`**
+Esta es la importación base y obligatoria para todos los desarrollos de COREEB. Cualquier estilo adicional de maquetación (como scrollbars, resets extra o tokens específicos) lo agregará libremente cada desarrollador debajo de estas importaciones según las necesidades del proyecto.
+
 ```css
 @import "tailwindcss";
 @import "tw-animate-css";
-@custom-variant dark (&:is(.dark *)); /* Opcional si se utiliza modo dark */
+@custom-variant dark (&:is(.dark *));
 @import "coreeb/styles.css";
 
-.material-symbols-outlined {
-  font-family: 'Material Symbols Outlined';
-  font-weight: normal;
-  font-size: 24px;
-  line-height: 1;
-  display: inline-block;
-  -webkit-font-smoothing: antialiased;
-}
+/* Cualquier estilo específico del proyecto va aquí debajo */
 ```
 
 ### D. **`src/app/layout.tsx`**
