@@ -32,9 +32,13 @@ pnpm dlx prisma init --datasource-provider postgresql
 
 ---
 
-## ESTRUCTURA DE DIRECTORIOS
+## ESTRUCTURA DE DIRECTORIOS — CLEAN ARCHITECTURE
+
+> Todo proyecto generado con esta skill sigue esta estructura modular. Cada módulo es independiente y vive dentro de `API/` o `Views/`.
+
+### Estructura de carpetas (OBLIGATORIA)
 ```
-src
+src/
 ├── Components/         # Componentes comunes globales
 ├── Hooks/              # Hooks comunes globales
 ├── Helpers/            # Helpers comunes globales
@@ -49,6 +53,30 @@ src
             ├── Hooks/
             └── Helpers/
 ```
+
+### Reglas que nunca se rompen
+1. `app/` solo tiene pages y API routes delgadas — **nunca** lógica de negocio.
+2. `API/[Modulo]/router/` recibe la request y delega a `Servicios/` — **nunca** accede a la BD directamente.
+3. `API/[Modulo]/Servicios/` contiene toda la lógica de negocio y acceso a Prisma.
+4. `Views/` **nunca** importa de `API/` directamente — consume datos via fetch/axios a los endpoints de `app/`.
+5. `Components/`, `Hooks/` y `Helpers/` globales son solo para código verdaderamente compartido entre módulos.
+6. Cada módulo en `Views/` tiene sus propios `Components/`, `Hooks/` y `Helpers/` locales.
+
+### ¿Dónde pongo esto?
+
+| Lo que necesitas crear                   | Va en                                          |
+| ---------------------------------------- | ---------------------------------------------- |
+| Una nueva página                         | `app/[modulo]/page.tsx`                        |
+| Un nuevo endpoint API                    | `app/api/[modulo]/route.ts`                    |
+| Lógica de negocio o acceso a BD          | `API/[Modulo]/Servicios/`                      |
+| Controlador del endpoint                 | `API/[Modulo]/router/`                         |
+| Vista / UI de un módulo                  | `Views/[Modulo]/`                              |
+| Componente reutilizable del módulo       | `Views/[Modulo]/Components/`                   |
+| Hook específico del módulo               | `Views/[Modulo]/Hooks/`                        |
+| Helper específico del módulo             | `Views/[Modulo]/Helpers/`                      |
+| Componente compartido entre módulos      | `Components/`                                  |
+| Hook compartido entre módulos            | `Hooks/`                                       |
+| Helper compartido entre módulos          | `Helpers/`                                     |
 
 ---
 
@@ -82,7 +110,7 @@ volumes:
 ### B. **`.env`**
 ```env
 # === VARIABLES EXCLUSIVAS DE DOCKER COMPOSE ===
-COMPOSE_PROJECT_NAME=coreeb_proyecto
+COMPOSE_PROJECT_NAME=coreeb_proyectos
 DB_USER=postgres
 DB_PASSWORD=postgres
 DB_NAME=appdb
@@ -90,7 +118,7 @@ DB_PORT=5432
 
 # === VARIABLES EXCLUSIVAS DEL PROYECTO (NEXT.JS / PRISMA) ===
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/appdb?schema=public"
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_COREEB_LOGIN_API= # Producción: URL del Coreeb Backend 
 PORT=3000
 ```
 
@@ -170,112 +198,124 @@ Para que el proyecto tenga una apariencia uniforme y agradable desde el inicio, 
 
 ---
 
-## 3. GUÍA DE DESARROLLO CLEAN ARCHITECTURE
+## 3. AUTENTICACIÓN — INTEGRACIÓN CON COREEB AUTH SERVICE
 
-### A. Prisma Singleton (`src/shared/infrastructure/prisma/prisma.client.ts`)
-```typescript
-import { PrismaClient } from '@prisma/client';
-const prisma = globalThis.prismaGlobal ?? new PrismaClient();
-export default prisma;
-if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma;
+> [!IMPORTANT]
+> **REGLA CRÍTICA:** Todo proyecto generado con esta skill **DEBE** conectar su sistema de login al **Coreeb Auth Service centralizado** (backend Express independiente). El frontend **NUNCA** maneja autenticación propia, encriptación de contraseñas ni base de datos de usuarios directamente. Solo consume el Auth Service mediante API.
+
+---
+
+### A. Variable de Entorno Obligatoria (`.env`)
+Agregar al `.env` del proyecto:
+```env
+NEXT_PUBLIC_COREEB_LOGIN_API= # Producción: URL del Coreeb Backend 
 ```
+> La URL real del Auth Service se configura aquí. **Nunca hardcodear URLs en el código.**
 
-### B. Capa Lógica y Datos (API)
+---
 
-#### Servicio: `src/API/productos/Servicios/producto.service.ts`
+### B. **`src/Helpers/apiClient.ts`** — Cliente HTTP centralizado
 ```typescript
-import prisma from '@/shared/infrastructure/prisma/prisma.client';
-
-export class ProductoService {
-  async obtenerTodos() {
-    return prisma.producto.findMany();
-  }
-}
-```
-
-#### Router modular: `src/API/productos/router/route.ts`
-```typescript
-import { NextResponse } from 'next/server';
-import { ProductoService } from '../Servicios/producto.service';
-
-const service = new ProductoService();
-
-export async function GET() {
-  try {
-    return NextResponse.json(await service.obtenerTodos());
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-```
-
-#### Endpoint Next.js Router: `src/app/api/productos/route.ts`
-```typescript
-export { GET } from '@/API/productos/router/route';
-```
-
-### C. Capa de Presentación (Views)
-
-#### Hook de Vista: `src/Views/productos/Hooks/useProducts.ts`
-```typescript
-'use client';
-import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-export function useProducts() {
-  const [productos, setProductos] = useState([]);
+const BASE_URL = process.env.NEXT_PUBLIC_COREEB_LOGIN_API!;
 
-  const cargarProductos = async () => {
-    try {
-      const { data } = await axios.get('/api/productos');
-      setProductos(data);
-    } catch (error) {
-      console.error('Error al cargar productos:', error);
+const api = axios.create({ baseURL: BASE_URL });
+
+api.interceptors.request.use((config) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+const AUTH_SKIP_REFRESH = ['/auth/login', '/auth/refresh', '/auth/reset-password'];
+
+api.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const url: string = error.config?.url ?? '';
+    const isAuthRoute = AUTH_SKIP_REFRESH.some((p) => url.includes(p));
+
+    if (error.response?.status === 401 && !isAuthRoute) {
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (!refreshToken) {
+        localStorage.clear();
+        window.location.href = '/';
+        return Promise.reject(error);
+      }
+      try {
+        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+        localStorage.setItem('accessToken', data.data.accessToken);
+        localStorage.setItem('refreshToken', data.data.refreshToken);
+        error.config.headers.Authorization = `Bearer ${data.data.accessToken}`;
+        return api.request(error.config);
+      } catch {
+        localStorage.clear();
+        window.location.href = '/';
+      }
     }
-  };
+    return Promise.reject(error);
+  }
+);
 
-  useEffect(() => {
-    cargarProductos();
-  }, []);
-
-  return { productos, cargarProductos };
-}
-```
-
-#### Componente de Vista: `src/Views/productos/Components/ProductList.tsx`
-```tsx
-'use client';
-import { useProducts } from '../Hooks/useProducts';
-import { Card } from 'coreeb';
-
-export function ProductList() {
-  const { productos } = useProducts();
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {productos.map((p: any) => (
-        <Card key={p.id} className="p-4">
-          <h3>{p.nombre}</h3>
-          <p>${p.precio}</p>
-        </Card>
-      ))}
-    </div>
-  );
-}
-```
-
-#### Frontend Router: `src/app/productos/page.tsx`
-```tsx
-import { ProductList } from '@/Views/productos/Components/ProductList';
-
-export default function Page() {
-  return <ProductList />;
-}
+export default api;
 ```
 
 ---
 
-## 4. Checklist de Cumplimiento
+### C. **`src/API/auth/Servicios/auth.service.ts`**
+```typescript
+import api from '@/Helpers/apiClient';
+
+export interface User {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
+}
+
+export const authService = {
+  login: async (email: string, password: string): Promise<LoginResponse> => {
+    const { data } = await api.post('/auth/login', { email, password });
+    return data.data;
+  },
+  me: async (): Promise<User> => {
+    const { data } = await api.get('/auth/me');
+    return data.data;
+  },
+  requestReset: async (email: string): Promise<{ resetToken: string }> => {
+    const { data } = await api.post('/auth/reset-password/request', { email });
+    return data.data;
+  },
+  confirmReset: async (token: string, newPassword: string): Promise<void> => {
+    await api.post('/auth/reset-password/confirm', { token, newPassword });
+  },
+};
+```
+
+---
+
+### D. Reglas de integración (NO negociables)
+- La URL del Auth Service **siempre** viene de `NEXT_PUBLIC_COREEB_LOGIN_API` — nunca hardcodeada en el código.
+- Los tokens (`accessToken`, `refreshToken`, `user`) se almacenan en `localStorage` tras un login exitoso.
+- El interceptor de Axios **auto-refresca** el `accessToken` en cualquier 401, excepto en rutas de auth.
+- Las rutas `/auth/login`, `/auth/refresh` y `/auth/reset-password` están en `AUTH_SKIP_REFRESH` — **no** disparan el refresco automático para evitar bucles infinitos.
+- Toda pantalla protegida debe verificar `localStorage.getItem('accessToken')` en `useEffect` y redirigir a `/` si no existe.
+- El diseño del formulario de login y cualquier pantalla de autenticación queda **USANDO LA LIBRERIA DE COREEB**. Solo es obligatorio que la conexión al Auth Service use `apiClient.ts` y `auth.service.ts`.
+- Toda creación, actualización, desactivación o activación de usuarios **debe pasar siempre** por el Coreeb Auth Service — nunca manejar usuarios directamente en el frontend ni en otros backends.
+
+---
+
+## 5. Checklist de Cumplimiento
 - [ ] Scaffolding inicial y dependencias instaladas.
 - [ ] Base de datos PostgreSQL levantada en Docker en segundo plano (`docker compose up -d db`).
 - [ ] Servidor de desarrollo Next.js ejecutándose localmente de forma nativa (`next dev`).
@@ -284,3 +324,8 @@ export default function Page() {
 - [ ] Frontend routes de Next.js delegando al renderizado de componentes dentro de Views.
 - [ ] Conexión a base de datos gestionada por el Prisma Singleton en localhost.
 - [ ] Interfaz construida exclusivamente con componentes e iconos de la librería coreeb.
+- [ ] `NEXT_PUBLIC_COREEB_LOGIN_API` definida en `.env` apuntando al Coreeb Auth Service.
+- [ ] `apiClient.ts` configurado con interceptores de token y auto-refresco, usando `AUTH_SKIP_REFRESH`.
+- [ ] `auth.service.ts` implementado con `login`, `me`, `requestReset`, `confirmReset`.
+- [ ] Formulario de login llama a `authService.login` y guarda los tokens en `localStorage`.
+- [ ] Rutas protegidas verifican `accessToken` en `localStorage` y redirigen a `/` si no existe.
