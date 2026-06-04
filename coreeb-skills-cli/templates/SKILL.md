@@ -1,18 +1,18 @@
 ---
 name: coreeb-fullstack
-description: Protocolo Next.js, Prisma, PostgreSQL y coreeb UI bajo Clean Architecture.
+description: Protocolo Next.js 
 ---
 
-# COREEB — SKILL CLEAN ARCHITECTURE
+# COREEB — SKILL 
 
 ## DIRECTIVA SUPREMA
-- **Frontend y Backend:** Next.js (App Router).
-- **Arquitectura:** **Clean Architecture** modular.
-- **ORM:** Prisma + PostgreSQL.
-- **Entorno local:** PostgreSQL en Docker + Next.js local (`next dev`).
+- **Frontend:** Next.js (App Router).
+- **Arquitectura:** Estructura modular organizada en 4 niveles (Routing, Modules, Global UI, Infrastructure).
+- **ORM:** Prisma + PostgreSQL (cuando aplique).
+- **Entorno local:** Next.js local (`next dev`) and Docker para servicios.
 - **UI:** Librería `coreeb` exclusivamente.
 - **Paquetes:** pnpm.
-- **Verificación de Dependencias Previa:** Antes de comenzar a escribir cualquier archivo de código, el agente **DEBE** revisar el archivo `package.json` de la raíz. Si no están presentes las dependencias obligatorias (`coreeb`, `sonner`, `tw-animate-css`, `axios`, `@prisma/client`, `prisma`, `tsx`, `@types/node`), el agente **debe proceder a instalarlas automáticamente** mediante `pnpm` antes de realizar otra tarea.
+- **Verificación de Dependencias Previa:** Antes de comenzar a escribir cualquier archivo de código, el agente **DEBE** revisar el archivo `package.json` de la raíz. Si no están presentes las dependencias obligatorias (`coreeb`, `sonner`, `tw-animate-css`, `axios`), el agente **debe proceder a instalarlas automáticamente** mediante `pnpm` antes de realizar otra tarea.
 - **Estilo de Páginas Obligatorio:** Cada página, vista, formulario y sub-componente frontend generado **DEBE** seguir y heredar rigurosamente el sistema de diseño, la maquetación, los iconos y la estética unificada de la librería `coreeb` de forma obligatoria.
 
 > [!IMPORTANT]
@@ -32,51 +32,116 @@ pnpm dlx prisma init --datasource-provider postgresql
 
 ---
 
-## ESTRUCTURA DE DIRECTORIOS — CLEAN ARCHITECTURE
+## ESTRUCTURA DE DIRECTORIOS
 
-> Todo proyecto generado con esta skill sigue esta estructura modular. Cada módulo es independiente y vive dentro de `API/` o `Views/`.
+> El proyecto sigue una estructura organizada en 4 niveles de abstracción (no hay directorios `API/` ni `Views/`).
 
 ### Estructura de carpetas (OBLIGATORIA)
 ```
-src/
-├── Components/         # Componentes comunes globales
-├── Hooks/              # Hooks comunes globales
-├── Helpers/            # Helpers comunes globales
-├── app/                # Enrutador (Pages y Endpoints API delgados)
-├── API/                # Capa lógica de Datos y Backend por módulo
-│     └── [Modulo]/
-│           ├── router/    # Controladores de endpoints
-│           └── Servicios/ # Lógica de negocio y base de datos
-└── Views/              # Capa de Presentación (UI) por módulo
-      └── [Modulo]/
-            ├── Components/
-            ├── Hooks/
-            └── Helpers/
+nombre-proyecto/
+│
+├── pnpm-workspace.yaml          # pnpm v11 config (approved build scripts)
+├── next.config.ts
+├── tsconfig.json                # Alias @/* → ./src/*
+├── tailwind / postcss config
+│
+└── src/
+    │
+    ├── app/                     # ── LEVEL 1: Routing (Next.js App Router) ──
+    │   ├── layout.tsx           # Root HTML shell · Montserrat + Open Sans fonts
+    │   ├── page.tsx             # Redirect → /dashboard
+    │   ├── globals.css          # Color tokens + global typography
+    │   │
+    │   └── (pages)/             # Route group (does not affect URLs)
+    │       ├── layout.tsx       # App shell: Sidebar + Header + <main>
+    │       │
+    │       ├── dashboard/
+    │       │   └── page.tsx
+    │       │
+    │       └── [modulo]/        # Ejemplo de ruta modular
+    │           ├── page.tsx
+    │           ├── create/page.tsx
+    │           └── [id]/
+    │               ├── page.tsx
+    │               └── edit/page.tsx
+    │
+    ├── modules/                 # ── LEVEL 2: Business logic per module ──
+    │   │
+    │   │   Pattern uniforme dentro de cada módulo:
+    │   │   └── [module]/
+    │   │       └── [action]/        list · create · detail · edit
+    │   │           ├── screens/     Full view (imported by page.tsx)
+    │   │           ├── components/  Reusable pieces of that screen
+    │   │           ├── hooks/       Data fetching and local state
+    │   │           └── helpers/     Pure functions and formatters
+    │   │
+    │   ├── dashboard/
+    │   │   └── list/
+    │   │       ├── screens/     DashboardScreen.tsx
+    │   │       ├── components/
+    │   │       ├── hooks/
+    │   │       └── helpers/
+    │   │
+    │   └── [modulo]/            # Módulo de ejemplo
+    │       ├── list/
+    │       │   ├── screens/     ModuloListScreen.tsx
+    │       │   ├── components/
+    │       │   ├── hooks/
+    │       │   └── helpers/
+    │       ├── create/
+    │       │   ├── screens/     ModuloCreateScreen.tsx
+    │       │   ├── components/
+    │       │   ├── hooks/
+    │       │   └── helpers/
+    │       ├── detail/
+    │       │   ├── screens/     ModuloDetailScreen.tsx
+    │       │   ├── components/
+    │       │   ├── hooks/
+    │       │   └── helpers/
+    │       └── edit/
+    │           ├── screens/     ModuloEditScreen.tsx
+    │           ├── components/
+    │           ├── hooks/
+    │           └── helpers/
+    │
+    ├── components/              # ── LEVEL 3: Global shared UI ──
+    │   ├── Sidebar.tsx          # Side navigation
+    │   ├── Header.tsx           # Top bar: search · notifications · user
+    │   └── ...
+    │
+    ├── hooks/                   # Global hooks (auth, permissions, etc.)
+    ├── helpers/                 # Global utilities (dates, formatters, etc.)
+    │
+    └── lib/                     # ── LEVEL 4: Infrastructure ──
+        ├── types/
+        │   └── index.ts         # Domain TypeScript types (User, Session, etc.)
+        ├── constants/
+        │   └── routes.ts        # All routes as typed constants
+        └── api/                 # HTTP client and service connectors (next stage)
 ```
 
 ### Reglas que nunca se rompen
-1. `app/` solo tiene pages y API routes delgadas — **nunca** lógica de negocio.
-2. `API/[Modulo]/router/` recibe la request y delega a `Servicios/` — **nunca** accede a la BD directamente.
-3. `API/[Modulo]/Servicios/` contiene toda la lógica de negocio y acceso a Prisma.
-4. `Views/` **nunca** importa de `API/` directamente — consume datos via fetch/axios a los endpoints de `app/`.
-5. `Components/`, `Hooks/` y `Helpers/` globales son solo para código verdaderamente compartido entre módulos.
-6. Cada módulo en `Views/` tiene sus propios `Components/`, `Hooks/` y `Helpers/` locales.
+1. **LEVEL 1: Routing (`src/app/`)**: El enrutador solo define las páginas (`page.tsx`) y los layouts (`layout.tsx`). Cada archivo `page.tsx` debe ser un contenedor delgado que importe y renderice el componente de pantalla (`Screen`) correspondiente de LEVEL 2. No debe haber lógica de negocio ni maquetación compleja de la interfaz en esta capa.
+2. **LEVEL 2: Modules (`src/modules/`)**: Contiene toda la lógica de negocio, hooks locales, helpers locales y subcomponentes organizados por módulo y acción. Cada acción de un módulo (`list`, `create`, `detail`, `edit`) tiene subcarpetas `screens/`, `components/`, `hooks/` y `helpers/`.
+3. **LEVEL 3: Global UI (`src/components/`)**: Contiene componentes de UI compartidos a nivel global en la aplicación (como `Sidebar.tsx`, `Header.tsx`, botones y modales genéricos).
+4. **LEVEL 4: Infrastructure (`src/lib/`)**: Contiene los tipos compartidos de dominio (`src/lib/types/`), constantes de rutas (`src/lib/constants/routes.ts`), y la configuración de clientes HTTP y conectores a servicios (`src/lib/api/`).
+5. **Estructura modular**: Toda la lógica está encapsulada en la estructura de 4 niveles descrita anteriormente (no se usan directorios `API/` ni `Views/`).
 
 ### ¿Dónde pongo esto?
 
-| Lo que necesitas crear                   | Va en                                          |
-| ---------------------------------------- | ---------------------------------------------- |
-| Una nueva página                         | `app/[modulo]/page.tsx`                        |
-| Un nuevo endpoint API                    | `app/api/[modulo]/route.ts`                    |
-| Lógica de negocio o acceso a BD          | `API/[Modulo]/Servicios/`                      |
-| Controlador del endpoint                 | `API/[Modulo]/router/`                         |
-| Vista / UI de un módulo                  | `Views/[Modulo]/`                              |
-| Componente reutilizable del módulo       | `Views/[Modulo]/Components/`                   |
-| Hook específico del módulo               | `Views/[Modulo]/Hooks/`                        |
-| Helper específico del módulo             | `Views/[Modulo]/Helpers/`                      |
-| Componente compartido entre módulos      | `Components/`                                  |
-| Hook compartido entre módulos            | `Hooks/`                                       |
-| Helper compartido entre módulos          | `Helpers/`                                     |
+| Lo que necesitas crear                   | Va en                                                             |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| Una nueva ruta/página                    | `src/app/(pages)/[modulo]/page.tsx`                               |
+| Vista principal (Screen) de una acción   | `src/modules/[modulo]/[action]/screens/[ScreenName].tsx`          |
+| Componente específico de una pantalla    | `src/modules/[modulo]/[action]/components/`                       |
+| Hook específico de una acción            | `src/modules/[modulo]/[action]/hooks/`                            |
+| Helper específico de una acción          | `src/modules/[modulo]/[action]/helpers/`                          |
+| Componente global reutilizable           | `src/components/`                                                 |
+| Hook global reutilizable                 | `src/hooks/`                                                      |
+| Helper global reutilizable               | `src/helpers/`                                                    |
+| Tipos de dominio compartidos             | `src/lib/types/index.ts`                                          |
+| Constantes de enrutamiento               | `src/lib/constants/routes.ts`                                     |
+| Cliente HTTP o conectores a APIs         | `src/lib/api/`                                                    |
 
 ---
 
@@ -214,7 +279,7 @@ NEXT_PUBLIC_COREEB_LOGIN_API= # Producción: URL del Coreeb Backend
 
 ---
 
-### B. **`src/Helpers/apiClient.ts`** — Cliente HTTP centralizado
+### B. **`src/lib/api/apiClient.ts`** — Cliente HTTP centralizado
 ```typescript
 import axios from 'axios';
 
@@ -263,9 +328,9 @@ export default api;
 
 ---
 
-### C. **`src/API/auth/Servicios/auth.service.ts`**
+### C. **`src/lib/api/authService.ts`**
 ```typescript
-import api from '@/Helpers/apiClient';
+import api from '@/lib/api/apiClient';
 
 export interface User {
   id: string;
@@ -310,22 +375,17 @@ export const authService = {
 - El interceptor de Axios **auto-refresca** el `accessToken` en cualquier 401, excepto en rutas de auth.
 - Las rutas `/auth/login`, `/auth/refresh` y `/auth/reset-password` están en `AUTH_SKIP_REFRESH` — **no** disparan el refresco automático para evitar bucles infinitos.
 - Toda pantalla protegida debe verificar `localStorage.getItem('accessToken')` en `useEffect` y redirigir a `/` si no existe.
-- El diseño del formulario de login y cualquier pantalla de autenticación queda **USANDO LA LIBRERIA DE COREEB**. Solo es obligatorio que la conexión al Auth Service use `apiClient.ts` y `auth.service.ts`.
+- El diseño del formulario de login y cualquier pantalla de autenticación queda **USANDO LA LIBRERIA DE COREEB**. Solo es obligatorio que la conexión al Auth Service use `apiClient.ts` y `authService.ts`.
 - Toda creación, actualización, desactivación o activación de usuarios **debe pasar siempre** por el Coreeb Auth Service — nunca manejar usuarios directamente en el frontend ni en otros backends.
 
 ---
 
 ## 5. Checklist de Cumplimiento
-- [ ] Scaffolding inicial y dependencias instaladas.
-- [ ] Base de datos PostgreSQL levantada en Docker en segundo plano (`docker compose up -d db`).
-- [ ] Servidor de desarrollo Next.js ejecutándose localmente de forma nativa (`next dev`).
-- [ ] Clean Architecture estructurada con carpetas compartidas y módulos independientes.
-- [ ] API routes de Next.js delegando mediante re-exports directos al API del módulo.
-- [ ] Frontend routes de Next.js delegando al renderizado de componentes dentro de Views.
-- [ ] Conexión a base de datos gestionada por el Prisma Singleton en localhost.
-- [ ] Interfaz construida exclusivamente con componentes e iconos de la librería coreeb.
+- [ ] Estructura modular de 4 niveles (Routing, Modules, Global UI, Infrastructure) implementada.
+- [ ] Las rutas de la aplicación en `src/app/` son delgadas e importan/renderizan los componentes de pantalla desde `src/modules/[module]/[action]/screens/`.
+- [ ] La interfaz está construida exclusivamente con componentes e iconos de la librería coreeb.
 - [ ] `NEXT_PUBLIC_COREEB_LOGIN_API` definida en `.env` apuntando al Coreeb Auth Service.
-- [ ] `apiClient.ts` configurado con interceptores de token y auto-refresco, usando `AUTH_SKIP_REFRESH`.
-- [ ] `auth.service.ts` implementado con `login`, `me`, `requestReset`, `confirmReset`.
+- [ ] `apiClient.ts` en `src/lib/api/apiClient.ts` configurado con interceptores de token y auto-refresco, usando `AUTH_SKIP_REFRESH`.
+- [ ] `authService.ts` en `src/lib/api/authService.ts` implementado con `login`, `me`, `requestReset`, `confirmReset`.
 - [ ] Formulario de login llama a `authService.login` y guarda los tokens en `localStorage`.
 - [ ] Rutas protegidas verifican `accessToken` en `localStorage` y redirigen a `/` si no existe.
