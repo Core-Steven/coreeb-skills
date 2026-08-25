@@ -268,6 +268,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 La interfaz se construye al 100% con estos componentes. La navegación y distribución de paneles usa `Tabs` y `Sheet` de `coreeb` de forma estricta.
 
+### F. **TAMAÑOS POR DEFECTO (OBLIGATORIO)**
+
+| Elemento               | Tamaño por defecto |
+| ---------------------- | ------------------ |
+| `Input`, `Select`      | `sm`               |
+| `Button`               | `small`            |
+| `Icons`                | `xs`               |
+
+Estos tamaños son el estándar del proyecto. Solo cambiar si hay una razón visual explícita y justificada.
+
 ---
 
 ## 2. Checklist de Cumplimiento del Proyecto
