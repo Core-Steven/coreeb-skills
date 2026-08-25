@@ -110,7 +110,7 @@ El texto mostrado al usuario puede seguir el idioma del proyecto.
 ## 📦 INSTALACIÓN & DEPENDENCIAS
 
 ```bash
-pnpm add coreeb sonner tw-animate-css axios
+pnpm add coreeb@latest
 ```
 
 > [!IMPORTANT]
