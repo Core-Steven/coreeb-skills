@@ -5,205 +5,215 @@ description: Protocolo Next.js
 
 # COREEB — SKILL
 
+## PRIORIDADES
+**Simplicidad > Legibilidad > Mantenibilidad > Reutilización > Consistencia.**
+La solución más simple es casi siempre la correcta.
+
+---
+
 ## DIRECTIVA SUPREMA
 - **Frontend:** Next.js (App Router).
 - **Arquitectura:** Estructura modular organizada en 4 niveles (Routing, Modules, Global UI, Infrastructure).
-- **ORM:** Prisma + PostgreSQL (cuando aplique).
-- **Entorno local:** Next.js local (`next dev`) and Docker para servicios.
-- **UI:** Librería `coreeb` exclusivamente.
-- **Paquetes:** pnpm.
-- **Verificación de Dependencias Previa:** Antes de comenzar a escribir cualquier archivo de código, el agente **DEBE** revisar el archivo `package.json` de la raíz. Si no están presentes las dependencias obligatorias (`coreeb`, `sonner`, `tw-animate-css`, `axios`), el agente **debe proceder a instalarlas automáticamente** mediante `pnpm` antes de realizar otra tarea.
-- **Estilo de Páginas Obligatorio:** Cada página, vista, formulario y sub-componente frontend generado **DEBE** seguir y heredar rigurosamente el sistema de diseño, la maquetación, los iconos y la estética unificada de la librería `coreeb` de forma obligatoria.
+- **UI:** Librería `coreeb` exclusivamente. Siempre buscar en `coreeb` antes de crear cualquier componente. La librería ya incluye Tailwind CSS internamente.
+- **Paquetes:** pnpm exclusivamente. Nunca usar npm ni yarn.
+- **Verificación de Dependencias Previa:** Antes de comenzar a escribir cualquier archivo de código, el agente **DEBE** revisar el archivo `package.json` de la raíz. Si no están presentes las dependencias obligatorias (`coreeb`, `sonner`, `tw-animate-css`, `axios`), el agente **debe instalarlas automáticamente** mediante `pnpm add` antes de realizar otra tarea.
+- **Estilo de Páginas Obligatorio:** Cada página, vista, formulario y sub-componente **DEBE** construirse con componentes de `coreeb`. No se permite usar otras librerías de UI ni estilos en línea.
 
 > [!IMPORTANT]
-> **GUÍA DE ESTILOS GLOBALES (`coreeb` UI Base):**
-> Para proyectos desde cero, el agente **debe generar una base de CSS limpia y bien documentada en `globals.css`** (por ejemplo, implementando clases de scrollbar personalizadas como `.custom-scrollbar` para las tablas, resets de diseño compatibles o utilidades específicas) para que sirva de guía y ejemplo a los desarrolladores.
-> Sin embargo, **toda esta base y cualquier estilo creado debe estar en estricta sincronía con la librería `coreeb`**, heredando y respetando siempre sus tokens, variables, inputs y estructura para que actúe como una extensión natural del sistema de diseño oficial, y nunca como estilos conflictivos.
+> **REGLA DE UI:**
+> 1. **`coreeb` primero y único** — si existe un componente en `coreeb` que cubre la necesidad, usarlo obligatoriamente. La librería ya incluye Tailwind CSS.
+> 2. **CSS custom solo como último recurso** — únicamente para casos excepcionales que `coreeb` no puede cubrir (ej. `.custom-scrollbar`).
 
 ---
 
-## 📦 INSTALACIÓN & DEPENDENCIAS (Solo para Proyectos desde Cero)
+## REGLAS DE DESARROLLO
+
+### Arquitectura
+- Seguir estrictamente la estructura de proyecto existente.
+- No inventar nuevas carpetas ni cambiar la organización del proyecto.
+- No introducir patrones de diseño que no estén ya en uso.
+- Antes de crear algo nuevo, verificar si ya existe algo reutilizable.
+
+### Componentes
+- Los componentes son responsables únicamente del renderizado. **Cero lógica de negocio dentro de componentes.**
+- Los componentes deben ser pequeños, fáciles de leer y fáciles de mantener.
+- Si un componente empieza a crecer con lógica, moverla inmediatamente a su hook.
+
+### Hooks
+- Cada componente tiene su propio hook dedicado.
+- Toda la lógica vive dentro del hook: estado, handlers, efectos, cálculos, valores derivados, llamadas a servicios.
+- Los hooks deben ser simples. Si un hook crece demasiado, dividir su responsabilidad.
+- Todos los hooks deben estar listos para integrarse con un backend real.
+
+### Servicios
+- Todos los datos deben obtenerse a través de servicios (`lib/api/` del módulo o `src/lib/api/` global).
+- **Nunca** hacer llamadas HTTP directamente desde componentes o hooks.
+- Los servicios son responsables de: consumir APIs, obtener/enviar datos, transformar respuestas.
+- Aunque existan datos mock inicialmente, la estructura debe estar lista para un backend real.
+
+### Tipos
+- Cada tipo va en un archivo `index.ts` dentro de una carpeta `types/`.
+- Los tipos locales de un módulo van en `src/modules/[module]/[action]/lib/types/index.ts`.
+- Los tipos globales compartidos van en `src/lib/types/index.ts`.
+
+### Código
+- Explícito sobre "inteligente".
+- Funciones pequeñas, archivos pequeños, nombres descriptivos.
+- Sin funciones demasiado genéricas, sin abstracciones innecesarias, sin optimizaciones prematuras.
+
+### Reutilización
+Antes de crear cualquier cosa nueva, verificar si ya existe — especialmente para:
+buttons, tables, inputs, selects, modals, cards, badges, pagination, dialogs, empty states, loaders, alerts, shared components.
+**Siempre reutilizar antes de crear.**
+
+### Aislamiento de Módulos
+- No modificar ningún otro módulo fuera del solicitado.
+- Solo trabajar dentro del módulo solicitado.
+- Sin refactorizaciones fuera del alcance de la tarea.
+
+### Backend Readiness
+- Los servicios deben poder reemplazar datos mock con llamadas API reales fácilmente.
+- La UI nunca debe depender de datos hardcodeados.
+
+### Librerías
+- Usar las librerías existentes: Axios (via `apiClient.ts`), date-fns.
+- No instalar nuevas dependencias a menos que sea estrictamente necesario y autorizado.
+- Gestionar paquetes siempre con `pnpm`.
+
+### Lenguaje
+Todo el código debe estar escrito en **inglés**: variables, funciones, interfaces, types, enums, componentes, hooks, servicios, carpetas, archivos.
+El texto mostrado al usuario puede seguir el idioma del proyecto.
+
+### Comentarios
+**No escribir comentarios.** El código debe ser autoexplicativo mediante buenos nombres y organización.
+
+---
+
+## ✅ CHECKLIST ANTES DE GENERAR CÓDIGO
+- [ ] ¿Existe un componente en `coreeb` que cubre la necesidad?
+- [ ] ¿Existe un componente reutilizable en el proyecto?
+- [ ] ¿Existe un hook reutilizable?
+- [ ] ¿Existe un servicio reutilizable?
+- [ ] ¿Estoy respetando la estructura actual del proyecto?
+- [ ] ¿Toda la lógica está dentro de hooks?
+- [ ] ¿Todas las llamadas HTTP están dentro de servicios?
+- [ ] ¿Estoy usando `coreeb` para todos los componentes UI?
+- [ ] ¿Todo el código está escrito en inglés?
+- [ ] ¿La solución es simple?
+- [ ] ¿Estoy evitando over-engineering?
+- [ ] ¿Solo estoy modificando el módulo solicitado?
+
+**Si alguna respuesta es No — corregir antes de generar código.**
+
+---
+
+## 📦 INSTALACIÓN & DEPENDENCIAS
+
 ```bash
 pnpm add coreeb sonner tw-animate-css axios
-pnpm add @prisma/client
-pnpm add -D prisma tsx @types/node
-pnpm dlx prisma init --datasource-provider postgresql
 ```
+
+> [!IMPORTANT]
+> Usar **siempre `pnpm`**. Nunca usar `npm install` ni `yarn add`.
 
 ---
 
-## ESTRUCTURA DE DIRECTORIOS
+## ESTRUCTURA DE DIRECTORIOS (OBLIGATORIA)
 
-> El proyecto sigue una estructura organizada en 4 niveles de abstracción.
+> Esta es la estructura exacta del proyecto. No agregar, renombrar ni reorganizar carpetas.
 
-### Estructura de carpetas (OBLIGATORIA)
 ```
-nombre-proyecto/
-│
-├── pnpm-workspace.yaml          # pnpm v11 config (approved build scripts)
+POINT-FRONT-V1/
+├── pnpm-workspace.yaml          # pnpm v11 config
 ├── next.config.ts
-├── tsconfig.json                # Alias @/* → ./src/*
-├── tailwind / postcss config
-│
+├── tsconfig.json                # Path alias @/* → ./src/*
+├── postcss.config.mjs
 └── src/
+    ├── app/                     # ── LEVEL 1: Routing (App Router)
+    │   ├── globals.css          # Global styles and design tokens
+    │   ├── layout.tsx           # Root HTML shell
+    │   ├── page.tsx             # Initial redirect to /dashboard
+    │   └── (pages)/             # Authenticated route group
+    │       ├── layout.tsx       # Sidebar + Header + <main>
+    │       ├── dashboard/page.tsx
+    │       ├── campanas/
+    │       │   ├── page.tsx
+    │       │   ├── create/page.tsx
+    │       │   └── [id]/
+    │       │       ├── page.tsx
+    │       │       └── edit/page.tsx
+    │       ├── mi-cuenta/
+    │       │   ├── page.tsx
+    │       │   ├── create/page.tsx
+    │       │   └── [id]/page.tsx
+    │       ├── monitoreo-bdd/page.tsx
+    │       ├── planner/
+    │       │   ├── page.tsx
+    │       │   └── create/page.tsx
+    │       ├── visual-senalizacion/
+    │       │   ├── page.tsx
+    │       │   ├── create/page.tsx
+    │       │   └── [id]/page.tsx
+    │       ├── software-pdv/page.tsx
+    │       ├── experiencia-cliente/page.tsx
+    │       └── administracion/page.tsx
     │
-    ├── app/                     # ── LEVEL 1: Routing (Next.js App Router) ──
-    │   ├── layout.tsx           # Root HTML shell · Montserrat + Open Sans fonts
-    │   ├── page.tsx             # Redirect → /dashboard
-    │   ├── globals.css          # Color tokens + global typography
+    ├── modules/                 # ── LEVEL 2: Business Logic per Module
+    │   │   # Patrón uniforme en cada acción CRUD (list · create · detail · edit):
+    │   │   ├── screens/         # Full view (imported by page.tsx)
+    │   │   ├── components/      # Local components of the action
+    │   │   ├── hooks/           # Data fetching and local state
+    │   │   ├── helpers/         # Pure functions and formatters
+    │   │   └── lib/
+    │   │       ├── api/         # HTTP client and data requests
+    │   │       └── types/       # Domain TypeScript types (index.ts)
     │   │
-    │   └── (pages)/             # Route group (does not affect URLs)
-    │       ├── layout.tsx       # App shell: Sidebar + Header + <main>
-    │       │
-    │       ├── dashboard/
-    │       │   └── page.tsx
-    │       │
-    │       └── [modulo]/        # Ejemplo de ruta modular
-    │           ├── page.tsx
-    │           ├── create/page.tsx
-    │           └── [id]/
-    │               ├── page.tsx
-    │               └── edit/page.tsx
+    │   ├── campanas/{list,create,detail,edit}/
+    │   ├── mi-cuenta/{list,create,detail}/
+    │   ├── monitoreo-bdd/list/
+    │   ├── planner/{list,create}/
+    │   ├── visual-senalizacion/{list,create,detail}/
+    │   ├── software-pdv/list/
+    │   ├── experiencia-cliente/list/
+    │   └── administracion/list/
     │
-    ├── modules/                 # ── LEVEL 2: Business logic per module ──
-    │   │
-    │   │   Pattern uniforme dentro de cada módulo:
-    │   │   └── [module]/
-    │   │       └── [action]/        list · create · detail · edit
-    │   │           ├── screens/     Full view (imported by page.tsx)
-    │   │           ├── components/  Reusable pieces of that screen
-    │   │           ├── hooks/       Data fetching and local state
-    │   │           └── helpers/     Pure functions and formatters
-    │   │
-    │   ├── dashboard/
-    │   │   └── list/
-    │   │       ├── screens/     DashboardScreen.tsx
-    │   │       ├── components/
-    │   │       ├── hooks/
-    │   │       └── helpers/
-    │   │
-    │   └── [modulo]/            # Módulo de ejemplo
-    │       ├── list/
-    │       │   ├── screens/     ModuloListScreen.tsx
-    │       │   ├── components/
-    │       │   ├── hooks/
-    │       │   └── helpers/
-    │       ├── create/
-    │       │   ├── screens/     ModuloCreateScreen.tsx
-    │       │   ├── components/
-    │       │   ├── hooks/
-    │       │   └── helpers/
-    │       ├── detail/
-    │       │   ├── screens/     ModuloDetailScreen.tsx
-    │       │   ├── components/
-    │       │   ├── hooks/
-    │       │   └── helpers/
-    │       └── edit/
-    │           ├── screens/     ModuloEditScreen.tsx
-    │           ├── components/
-    │           ├── hooks/
-    │           └── helpers/
+    ├── components/              # ── LEVEL 3: Global Shared UI
+    │   ├── Sidebar.tsx          # Side navigation bar
+    │   └── Header.tsx           # Top bar (profile, notifications)
     │
-    ├── components/              # ── LEVEL 3: Global shared UI ──
-    │   ├── Sidebar.tsx          # Side navigation
-    │   ├── Header.tsx           # Top bar: search · notifications · user
-    │   └── ...
-    │
-    ├── hooks/                   # Global hooks (auth, permissions, etc.)
-    ├── helpers/                 # Global utilities (dates, formatters, etc.)
-    │
-    └── lib/                     # ── LEVEL 4: Infrastructure ──
-        ├── types/
-        │   └── index.ts         # Domain TypeScript types (User, Session, etc.)
-        ├── constants/
-        │   └── routes.ts        # All routes as typed constants
-        └── api/                 # HTTP client and service connectors (next stage)
+    └── lib/                     # ── LEVEL 4: Infrastructure & Utilities
+        ├── api/                 # HTTP client and data requests
+        └── types/               # Global TypeScript types (index.ts)
 ```
 
 ### Reglas que nunca se rompen
-1. **LEVEL 1: Routing (`src/app/`)**: El enrutador solo define las páginas (`page.tsx`) y los layouts (`layout.tsx`). Cada archivo `page.tsx` debe ser un contenedor delgado que importe y renderice el componente de pantalla (`Screen`) correspondiente de LEVEL 2. No debe haber lógica de negocio ni maquetación compleja de la interfaz en esta capa.
-2. **LEVEL 2: Modules (`src/modules/`)**: Contiene toda la lógica de negocio, hooks locales, helpers locales y subcomponentes organizados por módulo y acción. Cada acción de un módulo (`list`, `create`, `detail`, `edit`) tiene subcarpetas `screens/`, `components/`, `hooks/` y `helpers/`.
-3. **LEVEL 3: Global UI (`src/components/`)**: Contiene componentes de UI compartidos a nivel global en la aplicación (como `Sidebar.tsx`, `Header.tsx`, botones y modales genéricos).
-4. **LEVEL 4: Infrastructure (`src/lib/`)**: Contiene los tipos compartidos de dominio (`src/lib/types/`), constantes de rutas (`src/lib/constants/routes.ts`), y la configuración de clientes HTTP y conectores a servicios (`src/lib/api/`).
-5. **Estructura modular**: Toda la lógica está encapsulada en la estructura de 4 niveles descrita anteriormente (no se usan directorios `API/` ni `Views/`).
+1. **LEVEL 1 — Routing (`src/app/`)**: Solo `page.tsx` y `layout.tsx`. Cada `page.tsx` es un contenedor delgado que importa y renderiza el `Screen` de LEVEL 2. Cero lógica aquí.
+2. **LEVEL 2 — Modules (`src/modules/`)**: Toda la lógica de negocio, hooks, helpers y subcomponentes organizados por módulo y acción. Cada acción tiene `screens/`, `components/`, `hooks/`, `helpers/` y `lib/{api,types}`.
+3. **LEVEL 3 — Global UI (`src/components/`)**: Solo componentes de UI compartidos globalmente (`Sidebar.tsx`, `Header.tsx`).
+4. **LEVEL 4 — Infrastructure (`src/lib/`)**: Cliente HTTP global (`src/lib/api/`) y tipos globales (`src/lib/types/index.ts`).
+5. **Solo los módulos definidos:** `campanas`, `mi-cuenta`, `monitoreo-bdd`, `planner`, `visual-senalizacion`, `software-pdv`, `experiencia-cliente`, `administracion`. No agregar módulos no listados.
 
 ### ¿Dónde pongo esto?
 
-| Lo que necesitas crear                   | Va en                                                             |
-| ---------------------------------------- | ----------------------------------------------------------------- |
-| Una nueva ruta/página                    | `src/app/(pages)/[modulo]/page.tsx`                               |
-| Vista principal (Screen) de una acción   | `src/modules/[modulo]/[action]/screens/[ScreenName].tsx`          |
-| Componente específico de una pantalla    | `src/modules/[modulo]/[action]/components/`                       |
-| Hook específico de una acción            | `src/modules/[modulo]/[action]/hooks/`                            |
-| Helper específico de una acción          | `src/modules/[modulo]/[action]/helpers/`                          |
-| Componente global reutilizable           | `src/components/`                                                 |
-| Hook global reutilizable                 | `src/hooks/`                                                      |
-| Helper global reutilizable               | `src/helpers/`                                                    |
-| Tipos de dominio compartidos             | `src/lib/types/index.ts`                                          |
-| Constantes de enrutamiento               | `src/lib/constants/routes.ts`                                     |
-| Cliente HTTP o conectores a APIs         | `src/lib/api/`                                                    |
+| Lo que necesitas crear                  | Va en                                                             |
+| --------------------------------------- | ----------------------------------------------------------------- |
+| Una nueva ruta/página                   | `src/app/(pages)/[modulo]/page.tsx`                               |
+| Vista principal (Screen) de una acción  | `src/modules/[modulo]/[action]/screens/[ScreenName].tsx`          |
+| Componente local de una acción          | `src/modules/[modulo]/[action]/components/`                       |
+| Hook de una acción                      | `src/modules/[modulo]/[action]/hooks/`                            |
+| Helper de una acción                    | `src/modules/[modulo]/[action]/helpers/`                          |
+| Servicio/cliente HTTP de una acción     | `src/modules/[modulo]/[action]/lib/api/`                          |
+| Tipos locales de una acción             | `src/modules/[modulo]/[action]/lib/types/index.ts`                |
+| Componente global reutilizable          | `src/components/`                                                 |
+| Cliente HTTP global                     | `src/lib/api/`                                                    |
+| Tipos globales compartidos              | `src/lib/types/index.ts`                                          |
 
 ---
 
-## 1. CONFIGURACIÓN DOCKER & ENTORNO
+## 1. CONFIGURACIÓN DE LIBRERÍA `coreeb` (UI)
 
-### A. **`docker-compose.yml`**
-```yaml
-services:
-  db:
-    image: postgres:16-alpine
-    container_name: ${COMPOSE_PROJECT_NAME:-app}_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-appdb}
-    ports:
-      - "${DB_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-appdb}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-volumes:
-  postgres_data:
-```
-
-### B. **`.env`**
-```env
-# === VARIABLES EXCLUSIVAS DE DOCKER COMPOSE ===
-COMPOSE_PROJECT_NAME=coreeb_proyectos
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=appdb
-DB_PORT=5432
-
-# === VARIABLES EXCLUSIVAS DEL PROYECTO (NEXT.JS / PRISMA) ===
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/appdb?schema=public"
-NEXT_PUBLIC_COREEB_LOGIN_API= # Producción: URL del Coreeb Backend 
-PORT=3000
-```
-
-### C. Scripts en **`package.json`**
-```json
-"scripts": {
-  "dev": "docker compose up -d db && next dev",
-  "build": "next build",
-  "start": "next start",
-  "db:migrate": "prisma migrate dev",
-  "db:studio": "prisma studio"
-}
-```
-
----
-
-## 2. CONFIGURACIÓN DE LIBRERÍA `coreeb` (UI)
-
-### A. **`next.config.mjs`**
-```js
+### A. **`next.config.ts`**
+```ts
 const nextConfig = { transpilePackages: ['coreeb'] };
 export default nextConfig;
 ```
@@ -215,19 +225,14 @@ export default config;
 ```
 
 ### C. **`src/app/globals.css`**
-Esta es la importación base y obligatoria para todos los desarrollos de COREEB.
-
 ```css
 @import "tailwindcss";
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
 @import "coreeb/styles.css";
 
-/* Cualquier estilo específico del proyecto va aquí debajo */
+/* Project-specific styles below */
 ```
-
-
-
 
 ### D. **`src/app/layout.tsx`**
 ```tsx
@@ -251,141 +256,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-### E. **CATÁLOGO DE COMPONENTES `coreeb` (Obligatorio)**
-Para que el proyecto tenga una apariencia uniforme y agradable desde el inicio, todo el diseño y maquetación de vistas y formularios debe utilizar los componentes nativos de `coreeb`:
-
-* **General / Layout:** `Icons`, `Button`, `Badge`, `Separator`, `Skeleton`, `Spinner`, `Visually Hidden`, `Card`, `Collapsible`, `Scroll Area`, `Tabs`.
-* **Formularios:** `Floating Input`, `Floating Select`, `Floating Date Picker`, `Chip Selector`, `Checkbox`, `Form`, `Radio Group`, `Switch`, `Textarea`, `File Dropzone`, `Date Range Pill`.
-* **Data Display & Feedback:** `Avatar`, `Table`, `Sonner (Toast)` (Toaster), `Tooltip`.
-* **Overlay:** `Command`, `Dialog`, `Dropdown Menu`, `Popover`, `Sheet`.
-
-*Nota: La interfaz debe crearse inicialmente al 100% usando estos componentes. La navegación general y la distribución de paneles de cada vista debe estar perfectamente coordinada con el estilo de pestañas de la aplicación, utilizando los componentes `Tabs` y `Sheet` de la librería de forma estricta. Cambios o personalizaciones se aplican después a petición del desarrollador.*
-
----
-
-## 3. AUTENTICACIÓN — INTEGRACIÓN CON COREEB AUTH SERVICE
+### E. **CATÁLOGO DE COMPONENTES `coreeb`**
 
 > [!IMPORTANT]
-> **REGLA CRÍTICA:** Todo proyecto generado con esta skill **DEBE** conectar su sistema de login al **Coreeb Auth Service centralizado** (backend Express independiente). El frontend **NUNCA** maneja autenticación propia, encriptación de contraseñas ni base de datos de usuarios directamente. Solo consume el Auth Service mediante API.
+> **Siempre consultar este catálogo antes de crear cualquier componente UI.** Si existe en `coreeb`, usarlo obligatoriamente.
+
+- **General / Layout:** `Icons`, `Button`, `Badge`, `Separator`, `Skeleton`, `Spinner`, `Visually Hidden`, `Card`, `Collapsible`, `Scroll Area`, `Tabs`.
+- **Formularios:** `Floating Input`, `Floating Select`, `Floating Date Picker`, `Chip Selector`, `Checkbox`, `Form`, `Radio Group`, `Switch`, `Textarea`, `File Dropzone`, `Date Range Pill`.
+- **Data Display & Feedback:** `Avatar`, `Table`, `Sonner (Toast)` (Toaster), `Tooltip`.
+- **Overlay:** `Command`, `Dialog`, `Dropdown Menu`, `Popover`, `Sheet`.
+
+La interfaz se construye al 100% con estos componentes. La navegación y distribución de paneles usa `Tabs` y `Sheet` de `coreeb` de forma estricta.
 
 ---
 
-### A. Variable de Entorno Obligatoria (`.env`)
-Agregar al `.env` del proyecto:
-```env
-NEXT_PUBLIC_COREEB_LOGIN_API= # Producción: URL del Coreeb Backend 
-```
-> La URL real del Auth Service se configura aquí. **Nunca hardcodear URLs en el código.**
-
----
-
-### B. **`src/lib/api/apiClient.ts`** — Cliente HTTP centralizado
-```typescript
-import axios from 'axios';
-
-const BASE_URL = process.env.NEXT_PUBLIC_COREEB_LOGIN_API!;
-
-const api = axios.create({ baseURL: BASE_URL });
-
-api.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-const AUTH_SKIP_REFRESH = ['/auth/login', '/auth/refresh', '/auth/reset-password'];
-
-api.interceptors.response.use(
-  (res) => res,
-  async (error) => {
-    const url: string = error.config?.url ?? '';
-    const isAuthRoute = AUTH_SKIP_REFRESH.some((p) => url.includes(p));
-
-    if (error.response?.status === 401 && !isAuthRoute) {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) {
-        localStorage.clear();
-        window.location.href = '/';
-        return Promise.reject(error);
-      }
-      try {
-        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
-        localStorage.setItem('accessToken', data.data.accessToken);
-        localStorage.setItem('refreshToken', data.data.refreshToken);
-        error.config.headers.Authorization = `Bearer ${data.data.accessToken}`;
-        return api.request(error.config);
-      } catch {
-        localStorage.clear();
-        window.location.href = '/';
-      }
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default api;
-```
-
----
-
-### C. **`src/lib/api/authService.ts`**
-```typescript
-import api from '@/lib/api/apiClient';
-
-export interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-  user: User;
-}
-
-export const authService = {
-  login: async (email: string, password: string): Promise<LoginResponse> => {
-    const { data } = await api.post('/auth/login', { email, password });
-    return data.data;
-  },
-  me: async (): Promise<User> => {
-    const { data } = await api.get('/auth/me');
-    return data.data;
-  },
-  requestReset: async (email: string): Promise<{ resetToken: string }> => {
-    const { data } = await api.post('/auth/reset-password/request', { email });
-    return data.data;
-  },
-  confirmReset: async (token: string, newPassword: string): Promise<void> => {
-    await api.post('/auth/reset-password/confirm', { token, newPassword });
-  },
-};
-```
-
----
-
-### D. Reglas de integración (NO negociables)
-- La URL del Auth Service **siempre** viene de `NEXT_PUBLIC_COREEB_LOGIN_API` — nunca hardcodeada en el código.
-- Los tokens (`accessToken`, `refreshToken`, `user`) se almacenan en `localStorage` tras un login exitoso.
-- El interceptor de Axios **auto-refresca** el `accessToken` en cualquier 401, excepto en rutas de auth.
-- Las rutas `/auth/login`, `/auth/refresh` y `/auth/reset-password` están en `AUTH_SKIP_REFRESH` — **no** disparan el refresco automático para evitar bucles infinitos.
-- Toda pantalla protegida debe verificar `localStorage.getItem('accessToken')` en `useEffect` y redirigir a `/` si no existe.
-- El diseño del formulario de login y cualquier pantalla de autenticación queda **USANDO LA LIBRERIA DE COREEB**. Solo es obligatorio que la conexión al Auth Service use `apiClient.ts` y `authService.ts`.
-- Toda creación, actualización, desactivación o activación de usuarios **debe pasar siempre** por el Coreeb Auth Service — nunca manejar usuarios directamente en el frontend ni en otros backends.
-
----
-
-## 5. Checklist de Cumplimiento
-- [ ] Estructura modular de 4 niveles (Routing, Modules, Global UI, Infrastructure) implementada.
-- [ ] Las rutas de la aplicación en `src/app/` son delgadas e importan/renderizan los componentes de pantalla desde `src/modules/[module]/[action]/screens/`.
-- [ ] La interfaz está construida exclusivamente con componentes e iconos de la librería coreeb.
-- [ ] `NEXT_PUBLIC_COREEB_LOGIN_API` definida en `.env` apuntando al Coreeb Auth Service.
-- [ ] `apiClient.ts` en `src/lib/api/apiClient.ts` configurado con interceptores de token y auto-refresco, usando `AUTH_SKIP_REFRESH`.
-- [ ] `authService.ts` en `src/lib/api/authService.ts` implementado con `login`, `me`, `requestReset`, `confirmReset`.
-- [ ] Formulario de login llama a `authService.login` y guarda los tokens en `localStorage`.
-- [ ] Rutas protegidas verifican `accessToken` en `localStorage` y redirigen a `/` si no existe.
+## 2. Checklist de Cumplimiento del Proyecto
+- [ ] Estructura de directorios POINT-FRONT-V1 respetada exactamente.
+- [ ] Dependencias instaladas con `pnpm add`.
+- [ ] `coreeb` usada en todo componente UI — consultado el catálogo antes de crear.
+- [ ] Las rutas en `src/app/` son contenedores delgados que importan `Screen` desde `src/modules/`.
+- [ ] Todo el código en inglés (variables, funciones, archivos, carpetas).
+- [ ] Cero lógica de negocio en componentes — todo en hooks.
+- [ ] Cero llamadas HTTP desde componentes o hooks — todo en servicios.
+- [ ] No se instalaron dependencias nuevas sin autorización.
+- [ ] No se modificó ningún módulo fuera del solicitado.
+- [ ] No hay comentarios en el código.
